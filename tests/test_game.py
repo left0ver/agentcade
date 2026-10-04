@@ -90,6 +90,50 @@ def test_hint_and_unclear_do_not_consume_attempts():
     assert game.attempts == game.score == 0
 
 
+def test_hints_and_wrong_answers_share_progress_without_repeating_clues():
+    game = Game()
+    start_question(game)
+    hints = RECORDED[0].hints
+    before_guess = game.handle(Decision.HINT, game.revision)
+    assert all(hint not in before_guess.text for hint in hints)
+    assert game.hint_index == game.attempts == 0
+    first = game.handle(Decision.INCORRECT, game.revision)
+    assert first.text == "还没有答对。" + hints[0] + "。"
+    second = game.handle(Decision.HINT, game.revision)
+    assert second.text == hints[1] + "。"
+    third = game.handle(Decision.HINT, game.revision)
+    assert third.text == hints[2] + "。"
+    for _ in range(2):
+        exhausted = game.handle(Decision.HINT, game.revision)
+        assert "提示已经全部说完" in exhausted.text
+        assert all(hint not in exhausted.text for hint in hints)
+    assert game.attempts == 1 and game.score == 0
+    final = game.handle(Decision.INCORRECT, game.revision)
+    assert final.text == f"这题的答案是{RECORDED[0].name}。"
+    assert final.advance and final.feedback == "incorrect"
+
+
+def test_hint_progress_resets_for_each_question_and_new_game():
+    game = Game()
+    start_question(game)
+    revision = game.revision
+    game.handle(Decision.INCORRECT, revision)
+    game.handle(Decision.SKIP, revision)
+    assert not game.handle(Decision.HINT, revision).text
+    game.advance()
+    game.set_question(RECORDED[1])
+    assert not game.handle(Decision.HINT, revision).text
+    assert game.hint_index == game.attempts == 0
+    assert "先看图猜一次" in game.handle(Decision.HINT, game.revision).text
+    reply = game.handle(Decision.INCORRECT, game.revision)
+    assert reply.text == "还没有答对。" + RECORDED[1].hints[0] + "。"
+    game.handle(Decision.END, game.revision)
+    start_question(game)
+    assert "先看图猜一次" in game.handle(Decision.HINT, game.revision).text
+    reply = game.handle(Decision.INCORRECT, game.revision)
+    assert reply.text == "还没有答对。" + RECORDED[0].hints[0] + "。"
+
+
 def test_skip_moves_to_next_animal_without_score():
     game = Game()
     start_question(game)

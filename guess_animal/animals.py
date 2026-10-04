@@ -33,7 +33,7 @@ class Animal:
     id: str
     name: str
     aliases: tuple[str, ...]
-    hint: str
+    hints: tuple[str, ...]
     strokes: tuple[Stroke, ...]
 
     def __post_init__(self) -> None:

@@ -45,10 +45,38 @@ def test_total_point_limit_is_checked_across_strokes():
         GeneratedRound.model_validate(data)
 
 
-def test_hint_must_not_reveal_answer():
+@pytest.mark.parametrize("index", range(3))
+def test_hint_must_not_reveal_answer(index):
     data = recorded_round()
-    data["animals"][0]["hint"] = "这只动物就是家猫。"
+    data["animals"][0]["hints"][index] = "它就是家猫。"
     with pytest.raises(ValidationError, match="包含答案"):
+        GeneratedRound.model_validate(data)
+
+
+@pytest.mark.parametrize("count", [0, 1, 2, 4])
+def test_hints_require_exactly_three_clues(count):
+    data = recorded_round()
+    data["animals"][0]["hints"] = (data["animals"][0]["hints"] * 2)[:count]
+    with pytest.raises(ValidationError):
+        GeneratedRound.model_validate(data)
+
+
+def test_duplicate_and_long_hints_are_rejected():
+    data = recorded_round()
+    hints = data["animals"][0]["hints"]
+    hints[1] = hints[0]
+    with pytest.raises(ValidationError, match="不能重复"):
+        GeneratedRound.model_validate(data)
+    hints[1] = "它是小型家养动物，擅长捕鼠，爱干净，趾底有肉垫，行动无声。"
+    with pytest.raises(ValidationError):
+        GeneratedRound.model_validate(data)
+
+
+@pytest.mark.parametrize("index", range(3))
+def test_each_hint_requires_an_explicit_subject(index):
+    data = recorded_round()
+    data["animals"][0]["hints"][index] = data["animals"][0]["hints"][index][1:]
+    with pytest.raises(ValidationError, match="pattern"):
         GeneratedRound.model_validate(data)
 
 

@@ -35,6 +35,7 @@ class Game:
         self.index = 0
         self.score = 0
         self.attempts = 0
+        self.hint_index = 0
         self.revision = 0
         self.active = False
         self.resolved = False
@@ -51,6 +52,7 @@ class Game:
             return Reply("游戏正在进行，请说出动物名称，也可以说提示、下一题或结束游戏。")
         self.deck = []
         self.index = self.score = self.attempts = self.silence_count = 0
+        self.hint_index = 0
         self.active = True
         self.resolved = False
         self.revision += 1
@@ -66,7 +68,18 @@ class Game:
         if any(item.name == animal.name or item.id == animal.id for item in self.deck):
             raise ValueError("同一局的动物不能重复")
         self.deck.append(animal)
+        self.hint_index = 0
         self.revision += 1
+
+    def next_hint(self) -> str:
+        animal = self.animal
+        if animal is None:
+            raise RuntimeError("提供提示需要当前题目")
+        if self.hint_index >= len(animal.hints):
+            return "提示已经全部说完了，再看看图案吧。"
+        hint = animal.hints[self.hint_index]
+        self.hint_index += 1
+        return hint.rstrip("。！？.!?") + "。"
 
     def handle(self, decision: Decision, revision: int) -> Reply:
         if revision != self.revision:
@@ -86,7 +99,9 @@ class Game:
         if self.resolved or animal is None:
             return Reply()
         if decision is Decision.HINT:
-            return Reply(animal.hint + "请说出它的名字。")
+            if self.attempts == 0:
+                return Reply("先看图猜一次吧，答错后我会给你提示。")
+            return Reply(self.next_hint())
         if decision is Decision.CORRECT:
             self.score += 1
             self.resolved = True
@@ -98,10 +113,8 @@ class Game:
             self.attempts += 1
             if self.attempts >= self.max_attempts:
                 self.resolved = True
-                return Reply(
-                    f"这题的答案是{animal.name}。{animal.hint}", advance=True, feedback="incorrect"
-                )
-            return Reply(f"还没有答对。{animal.hint}再回答一次吧。", feedback="incorrect")
+                return Reply(f"这题的答案是{animal.name}。", advance=True, feedback="incorrect")
+            return Reply(f"还没有答对。{self.next_hint()}", feedback="incorrect")
         return Reply("请说一个动物名称，也可以说提示、下一题或结束游戏。")
 
     def advance(self) -> Reply:
@@ -110,6 +123,7 @@ class Game:
         self.revision += 1
         self.index += 1
         self.attempts = self.silence_count = 0
+        self.hint_index = 0
         self.resolved = False
         if self.index == self.rounds:
             self.active = False

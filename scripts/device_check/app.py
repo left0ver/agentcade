@@ -41,7 +41,14 @@ async def main() -> None:
     async with ApplicationContext.from_environment() as app:
         game = CheckedRobotGame(app, settings)
         game.game = Game(rounds=2)
-        report = {"complete": False, "questions": [], "expressions": [], "answers": []}
+        report = {
+            "complete": False,
+            "questions": [],
+            "expressions": [],
+            "answers": [],
+            "hints": [],
+            "tts_voice": settings.tts_voice,
+        }
         output = ROOT / ".artifacts"
         output.mkdir(exist_ok=True)
         try:
@@ -73,8 +80,14 @@ async def main() -> None:
                 if animal is None or len(game.game.deck) != index + 1:
                     raise AssertionError("生成和完成提示之后必须进入当前题目")
                 report["questions"].append(
-                    {"animal": animal.id, "seconds": round(time.monotonic() - start, 2)}
+                    {
+                        "animal": animal.id,
+                        "hints": animal.hints,
+                        "seconds": round(time.monotonic() - start, 2),
+                    }
                 )
+                if game.game.hint_index != 0 or game.game.attempts != 0:
+                    raise AssertionError("首次猜测前不能提供提示或消耗回答次数")
                 wrong_name = next(
                     name
                     for name in ("长颈鹿", "企鹅", "乌龟", "鳄鱼")
@@ -93,6 +106,12 @@ async def main() -> None:
                     reply = game.game.handle(decision, game.game.revision)
                     if reply.advance != (attempt == 2):
                         raise AssertionError("题目结束状态与回答次数不符")
+                    if attempt == 1:
+                        expected_hint = animal.hints[0].rstrip("。！？.!?") + "。"
+                        if reply.text != "还没有答对。" + expected_hint:
+                            raise AssertionError("首次答错必须提供第一条提示")
+                        if game.game.hint_index != 1:
+                            raise AssertionError("答错提示必须推进提示顺序")
                     before = len(game.displayed)
                     await game.present(reply)
                     expected_paths = [
@@ -123,11 +142,16 @@ async def main() -> None:
                             "expression": "009" if expected is Decision.CORRECT else "141",
                             "animal_restored": expected is Decision.INCORRECT,
                             "feedback_seconds": feedback_seconds,
+                            "text": reply.text,
                         }
                     )
                     app.logger.info(
                         "第 %s 题第 %s 次回答：表情及图案恢复检查通过", index + 1, attempt
                     )
+                    if attempt == 1:
+                        report["hints"].append(
+                            {"question": index + 1, "hint_index": 0, "text": reply.text}
+                        )
                 reply = game.game.advance()
             if reply.prepare or game.game.active or game.game.score != 1:
                 raise AssertionError("两题结束之后必须完成游戏并停止出题")

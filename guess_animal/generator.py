@@ -16,6 +16,7 @@ from guess_animal.providers import create_provider
 Coordinate = Annotated[int, Field(strict=True, ge=0, le=411)]
 Coordinates = Annotated[list[Coordinate], Field(min_length=2, max_length=2)]
 Name = Annotated[str, Field(min_length=1, max_length=24)]
+Hint = Annotated[str, Field(min_length=4, max_length=16, pattern=r"^它")]
 
 
 def normalize_name(value: str) -> str:
@@ -33,7 +34,11 @@ class GeneratedAnimal(BaseModel):
     id: str = Field(pattern=r"^[a-z][a-z0-9_]{0,39}$")
     name: Name
     aliases: list[Name] = Field(max_length=8)
-    hint: str = Field(min_length=5, max_length=80)
+    hints: list[Hint] = Field(
+        min_length=3,
+        max_length=3,
+        description="三个由宽泛到明显的完整中文短句，每条以它开头，只描述一个特征，长度为 4 至 16 个字符",
+    )
     strokes: list[GeneratedStroke] = Field(min_length=3, max_length=12)
 
     def animal(self) -> Animal:
@@ -41,7 +46,7 @@ class GeneratedAnimal(BaseModel):
             id=self.id,
             name=self.name,
             aliases=tuple(self.aliases),
-            hint=self.hint,
+            hints=tuple(self.hints),
             strokes=tuple(
                 Stroke(tuple((x, y) for x, y in stroke.points), stroke.width)
                 for stroke in self.strokes
@@ -58,8 +63,13 @@ class GeneratedAnimal(BaseModel):
             raise ValueError("动物图案宽度不足")
         if max(y for _, y in points) - min(y for _, y in points) < 120:
             raise ValueError("动物图案高度不足")
+        normalized_hints = [normalize_name(hint) for hint in self.hints]
+        if len(set(normalized_hints)) != len(normalized_hints):
+            raise ValueError("动物提示不能重复")
         if any(
-            normalize_name(name) in normalize_name(self.hint) for name in [self.name, *self.aliases]
+            normalize_name(name) in hint
+            for hint in normalized_hints
+            for name in [self.name, *self.aliases]
         ):
             raise ValueError("动物提示中不能包含答案或认可别名")
         return self
@@ -112,7 +122,7 @@ SYSTEM_PROMPT = """你为桌面机器人的中文猜动物游戏设计题目及�
 返回且只返回一个 JSON 对象，结构为 {"animals": [...]}。
 每只动物对象的格式示例：
 {"id":"animal_slug","name":"动物名称","aliases":["同义名称"],
-"hint":"描述习性或外形的中文提示。",
+"hints":["它生活在草原上", "它喜欢吃树叶", "它的脖子很长"],
 "strokes":[{"width":6,"points":[[100,100],[160,60],[210,100]]}]}
 示例只解释字段，实际每只动物至少需要三条笔画和十二个不同坐标。
 
@@ -120,7 +130,12 @@ SYSTEM_PROMPT = """你为桌面机器人的中文猜动物游戏设计题目及�
 自由选择物种，不限定动物目录，兼顾哺乳类、鸟类、水生动物、爬行类等。
 同一局不能出现相同动物、同义名称或仅品种不同的同类动物。
 aliases 只包含确切同义词，不能包含其他物种、宽泛分类或含糊简称。
-hint 描述习性或外形，不得包含 name 或任何 alias，也不能直接公布答案。
+hints 必须恰好包含三个简短中文提示，按照从宽泛到明显的顺序引导用户猜答案。
+每条必须以“它”开头，包含主语，写成适合语音播报的自然、完整短句。
+可以使用“它生活在……”“它喜欢……”“它会……”“它的……很……”等句式。
+第一条给出生活环境或宽泛习性，第二条缩小范围，第三条给出鲜明的外形或行为特征。
+每条只描述一个特征，建议 4 至 12 个字符，最多 16 个字符，不要把多个线索写进同一句。
+三条提示提供不同的信息，不能重复、编号或包含 name、任何 alias，也不能直接公布答案。
 
 在黑色画布上独立设计完整的白色动物全身简笔画，所有可见内容都由 strokes 绘制。
 每只动物必须完整展示头部、躯干，以及该物种具有的四肢、翅膀、鳍、尾巴等身体部位。

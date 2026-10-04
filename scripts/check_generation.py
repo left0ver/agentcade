@@ -31,7 +31,13 @@ async def main() -> None:
             seconds = round(time.monotonic() - start, 2)
             names = [animal.name for animal in animals]
             print(f"第 {index + 1} 次生成通过：{names}，耗时 {seconds} 秒", flush=True)
-            report.append({"names": names, "seconds": seconds})
+            report.append(
+                {
+                    "names": names,
+                    "hints": [animal.hints for animal in animals],
+                    "seconds": seconds,
+                }
+            )
     finally:
         await generator.close()
     (output / "report.json").write_text(
