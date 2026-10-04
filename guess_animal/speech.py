@@ -80,7 +80,7 @@ class QwenSpeech:
             "format": "pcm",
             "sample_rate": 24000,
             "language_hints": ["zh"],
-            "volume": 50,
+            "volume": 40,
             "rate": 1.0,
         }
         async with asyncio.timeout(60):
