@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from enum import Enum
+from typing import Literal
 
 from guess_animal.animals import Animal
 
@@ -21,6 +22,7 @@ class Reply:
     advance: bool = False
     prepare: bool = False
     clear: bool = False
+    feedback: Literal["correct", "incorrect"] | None = None
 
 
 class Game:
@@ -88,7 +90,7 @@ class Game:
         if decision is Decision.CORRECT:
             self.score += 1
             self.resolved = True
-            return Reply(f"答对了，是{animal.name}！", advance=True)
+            return Reply(f"答对了，是{animal.name}！", advance=True, feedback="correct")
         if decision is Decision.SKIP:
             self.resolved = True
             return Reply(f"这题的答案是{animal.name}。", advance=True)
@@ -96,8 +98,10 @@ class Game:
             self.attempts += 1
             if self.attempts >= self.max_attempts:
                 self.resolved = True
-                return Reply(f"这题的答案是{animal.name}。{animal.hint}", advance=True)
-            return Reply(f"还没有答对。{animal.hint}再回答一次吧。")
+                return Reply(
+                    f"这题的答案是{animal.name}。{animal.hint}", advance=True, feedback="incorrect"
+                )
+            return Reply(f"还没有答对。{animal.hint}再回答一次吧。", feedback="incorrect")
         return Reply("请说一个动物名称，也可以说提示、下一题或结束游戏。")
 
     def advance(self) -> Reply:

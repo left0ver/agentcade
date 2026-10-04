@@ -1,0 +1,12 @@
+{
+  "schema_version": 2,
+  "id": "local.desktop_robot_eye_preview",
+  "name": "猜动物表情预览",
+  "version": "0.1.0",
+  "requires_watcherobot": ">=0.1.10,<0.2",
+  "dependencies": [],
+  "supported_host_platforms": ["windows", "macos"],
+  "description": "在真实机器人上轮播生成题目期间可选的各种静态眼型。",
+  "author": "Local Developer",
+  "icon": "icon.svg"
+}

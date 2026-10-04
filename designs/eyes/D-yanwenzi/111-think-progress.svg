@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 412 412" width="412" height="412">
+<defs><clipPath id="screen"><circle cx="206" cy="206" r="206"/></clipPath></defs>
+<circle cx="206" cy="206" r="206" fill="#000"/>
+<g clip-path="url(#screen)">
+<circle cx="126" cy="188" r="17" fill="#FFFFFF"/><circle cx="286" cy="188" r="17" fill="#FFFFFF"/><path d="M188 250Q206 274 224 250" fill="none" stroke="#FFFFFF" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/><rect x="131" y="80" width="150" height="24" rx="12" fill="none" stroke="#FFFFFF" stroke-width="6"/><rect x="137" y="87" width="86" height="10" rx="5" fill="#FFFFFF"/>
+</g>
+</svg>

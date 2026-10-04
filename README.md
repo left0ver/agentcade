@@ -6,7 +6,9 @@
 
 支持 DeepSeek API、本机 Claude Code 和本机 Codex。动物名称、认可别名、提示和全部笔画坐标均由模型动态生成，包括动物自己的眼睛。每题要求绘制完整动物全身，包含头部、躯干及该物种具有的四肢、翅膀、鳍或尾巴。模型决定视角、姿态和五官比例，所有身体部位都位于屏幕范围内，图案通过 SDK 的自定义矢量配件逐笔显示。
 
-生成题目期间，机器人显示 `thinking` 表情预设。绘图期间，眼睑遮罩覆盖机器人原有眼睛，动物线条显示在独立的前景图层，眼睛与其余图案一起由模型生成。结束游戏时恢复待机表情。
+游戏使用 `designs/eyes/D-yanwenzi.svg` 中的三个颜文字表情：答对时显示 09，答错时显示 141，生成题目时显示 111。表情覆盖机器人原有眼睛。回答语音准备好后切换反馈表情并开始播放：答对时保持 09 直到语音结束；答错时显示 141，1.5 秒后恢复当前动物图案，语音继续播放，最后一次答错也采用相同规则。111 的进度条从开始调用模型时计时，按已用时间与 `DRAWING_ESTIMATE_SECONDS` 的比例线性增加，百分比向下取整，生成期间最高显示 99%；生成成功后显示 100% 并切换为动物图案。默认预计 60 秒，15、30、45 秒时分别显示 25%、50%、75%，超过预计时间保持 99%。这个进度条表示预计等待进度。结束游戏时恢复待机表情。
+
+`guess_animal/expressions.py` 使用 `svgelements` 读取三个独立 SVG，用 `Shapely` 处理填充区域，再转换成 SDK 支持的白色矢量笔画。曲线使用折线近似，全部帧均遵守十二条笔画、一百九十二个坐标点的设备限制。`guess_animal/eyes.py` 的 `LOOKS` 保留九种基础眼型，供眼型预览程序使用。
 
 DeepSeek provider 通过 OpenAI SDK 的 `AsyncOpenAI.chat.completions.create()` 调用官方兼容接口。本机 provider 分别调用 `claude --print` 和 `codex exec`，通过 JSON Schema 获取结构化输出。三个 provider 共用全身图案提示词、Pydantic 检查和去重历史。生成请求包含不同的构图要求、请求标识及近期动物名称。每幅图案必须符合坐标、笔画和总点数限制，重复名称、别名冲突、提示中包含答案及完全相同的笔画数据都会在发送设备前被拒绝。
 
@@ -118,13 +120,19 @@ DRAWING_PROVIDER=claude_code uv run python -m scripts.check_generation --count 1
 DRAWING_PROVIDER=codex uv run python -m scripts.check_generation --count 1
 ```
 
-连接机器人并停止游戏应用后，可以执行设备检查：
+连接机器人并停止游戏应用后，可以在真机上对比全部眼型，不调用任何模型服务。屏幕先显示眼型编号，再显示该眼型，约八秒后自动切到下一种；转动滚轮可前后切换，点击屏幕切到下一种，手动切换后停止自动轮播。终端同步输出当前眼型的编号与说明。按 Ctrl+C 或十分钟后结束，并恢复待机表情：
+
+```bash
+uv run watcherobot app run scripts/eye_preview
+```
+
+同样在停止游戏应用后，可以执行设备检查：
 
 ```bash
 uv run watcherobot app run scripts/device_check
 ```
 
-设备检查运行两道题目的完整流程：播报生成提示、单题生成、逐笔显示、播报完成提示，将生成的动物名称通过真实 Jev 接口判定并播报结果，然后生成下一题。它检查逐题状态、播放完成事件和最后一题之后的结束行为，再检查麦克风音频格式、数据量和音频丢失情况。结果写入 `.artifacts/device_check.json`。这个检查会实际改变机器人屏幕并播放语音，完成后恢复待机表情。它验证设备指令和数据传输，不评价图案的视觉辨识效果；回答文本由检查程序传入 Jev。
+设备检查展示 09、141 和 111，并发送 111 从 0 到 100 的全部进度帧，检查设备确认。随后运行两道题目的完整流程：播报生成提示、单题生成、逐笔显示、播报完成提示，将回答文本通过真实 Jev 接口判定并播报结果。第一题检查答错后显示 141、恢复动物图案，以及答对后显示 09；第二题检查两次答错和结束游戏的行为。每次答错都会记录表情显示至恢复图案的时间，并检查恢复发生在语音播放期间；计时检查包含 1.5 秒等待和设备通信容差。它同时检查播放完成事件、麦克风音频格式、数据量和音频丢失情况。结果写入 `.artifacts/device_check.json`。这个检查会实际改变机器人屏幕并播放语音，完成后恢复待机表情。验证范围为设备指令和数据传输；回答文本由检查程序传入 Jev，图案的视觉效果和 ASR 识别效果需要单独检查。
 
 ## 文件
 
@@ -133,13 +141,17 @@ uv run watcherobot app run scripts/device_check
 | `app.py` | SDK Application 入口 |
 | `guess_animal/animals.py` | 动物数据结构、矢量编码与屏幕限制 |
 | `guess_animal/generator.py` | 全身图案提示词、输出检查与生成历史 |
+| `guess_animal/expressions.py` | 09、111、141 的 SVG 转换和生成进度 |
 | `guess_animal/providers.py` | DeepSeek、Claude Code、Codex 调用及进程清理 |
 | `guess_animal/game.py` | 出题、回答次数、计分和题目切换 |
+| `guess_animal/eyes.py` | 待机、隐藏眼睛与基础眼型预览参数 |
 | `guess_animal/speech.py` | Qwen ASR 与 TTS |
 | `guess_animal/judge.py` | Jev 游戏意图及答案判定 |
 | `guess_animal/robot_game.py` | 麦克风、播放、显示及游戏流程 |
 | `guess_animal/config.py` | 配置读取与检查 |
 | `tests/test_game.py` | 游戏规则和 SDK 图案格式测试 |
 | `tests/test_generator.py` | 生成格式、坐标限制、提示与去重测试 |
+| `tests/test_eyes.py` | 眼睛参数的 SDK 检查 |
+| `tests/test_expressions.py` | 表情来源、矢量几何误差及全部进度帧的 SDK 检查 |
 
 SDK 会收集应用根目录中的 Python 模块。`app.json` 声明运行依赖，`.watcherignore` 排除测试脚本与中间文件。

@@ -60,6 +60,28 @@ def test_wrong_answers_reveal_only_after_second_attempt():
     assert game.attempts == 0
 
 
+def test_answer_feedback_matches_the_result_on_every_attempt():
+    game = Game()
+    start_question(game)
+    first = game.handle(Decision.INCORRECT, game.revision)
+    assert first.feedback == "incorrect" and not first.advance
+    second = game.handle(Decision.INCORRECT, game.revision)
+    assert second.feedback == "incorrect" and second.advance
+    assert game.handle(Decision.CORRECT, game.revision).feedback is None
+    game.advance()
+    game.set_question(RECORDED[1])
+    correct = game.handle(Decision.CORRECT, game.revision)
+    assert correct.feedback == "correct" and correct.advance
+
+
+@pytest.mark.parametrize("decision", [Decision.HINT, Decision.SKIP, Decision.UNCLEAR, Decision.END])
+def test_other_commands_and_stale_answers_have_no_answer_feedback(decision):
+    game = Game()
+    start_question(game)
+    assert game.handle(Decision.CORRECT, game.revision - 1).feedback is None
+    assert game.handle(decision, game.revision).feedback is None
+
+
 def test_hint_and_unclear_do_not_consume_attempts():
     game = Game()
     start_question(game)

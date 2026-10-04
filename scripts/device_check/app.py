@@ -10,18 +10,57 @@ from watcherobot.application import ApplicationContext
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from guess_animal.animals import encode_vector
 from guess_animal.config import ROOT, Settings
+from guess_animal.expressions import expression_vector
 from guess_animal.game import Decision, Game
 from guess_animal.robot_game import RobotGame
+
+
+class CheckedRobotGame(RobotGame):
+    def __init__(self, app: ApplicationContext, settings: Settings):
+        super().__init__(app, settings)
+        self.displayed: list[str] = []
+        self.display_times: list[float] = []
+        self.playback_times: list[tuple[float, float]] = []
+
+    async def show_vector(self, path: str) -> None:
+        await super().show_vector(path)
+        # 仅记录真实设备指令成功返回之后的图案。
+        self.displayed.append(path)
+        self.display_times.append(time.monotonic())
+
+    async def play_audio(self, pcm: bytes) -> None:
+        started = time.monotonic()
+        await super().play_audio(pcm)
+        self.playback_times.append((started, time.monotonic()))
 
 
 async def main() -> None:
     settings = Settings.from_environment()
     async with ApplicationContext.from_environment() as app:
-        game = RobotGame(app, settings)
+        game = CheckedRobotGame(app, settings)
         game.game = Game(rounds=2)
-        report = {"questions": []}
+        report = {"complete": False, "questions": [], "expressions": [], "answers": []}
+        output = ROOT / ".artifacts"
+        output.mkdir(exist_ok=True)
         try:
+            for code in ("009", "141"):
+                await game.show_vector(expression_vector(code))
+                app.logger.info("表情 %s 已发送至机器人", code)
+                report["expressions"].append(code)
+                await asyncio.sleep(2)
+            await game.show_vector(expression_vector("111"))
+            for progress in range(1, 101):
+                await asyncio.to_thread(
+                    game.robot.expression_runtime.update,
+                    custom_vector_path=expression_vector("111", progress),
+                )
+                await asyncio.sleep(0.04)
+            report["progress_frames_acknowledged"] = 101
+            report["expressions"].append("111")
+            app.logger.info("111 的 101 个进度帧均已获得设备确认")
+            await game.clear()
             reply = game.game.start()
             for index in range(2):
                 if not reply.prepare or game.game.animal is not None:
@@ -36,15 +75,61 @@ async def main() -> None:
                 report["questions"].append(
                     {"animal": animal.id, "seconds": round(time.monotonic() - start, 2)}
                 )
-                decision = await game.judge.decide(animal.name, animal)
-                if decision is not Decision.CORRECT:
-                    raise AssertionError("Jev 必须认可真实生成的答案")
-                reply = game.game.handle(decision, game.game.revision)
-                if not reply.advance:
-                    raise AssertionError("正确回答之后必须结束当前题目")
-                await game.present(reply)
+                wrong_name = next(
+                    name
+                    for name in ("长颈鹿", "企鹅", "乌龟", "鳄鱼")
+                    if name not in (animal.name, *animal.aliases)
+                )
+                answers = (
+                    (wrong_name, Decision.INCORRECT),
+                    (animal.name, Decision.CORRECT)
+                    if index == 0
+                    else (wrong_name, Decision.INCORRECT),
+                )
+                for attempt, (answer, expected) in enumerate(answers, start=1):
+                    decision = await game.judge.decide(answer, animal)
+                    if decision is not expected:
+                        raise AssertionError(f"Jev 返回 {decision}，预期为 {expected}")
+                    reply = game.game.handle(decision, game.game.revision)
+                    if reply.advance != (attempt == 2):
+                        raise AssertionError("题目结束状态与回答次数不符")
+                    before = len(game.displayed)
+                    await game.present(reply)
+                    expected_paths = [
+                        expression_vector("009" if expected is Decision.CORRECT else "141")
+                    ]
+                    if expected is Decision.INCORRECT:
+                        expected_paths.append(encode_vector(animal.strokes))
+                    if game.displayed[before:] != expected_paths:
+                        raise AssertionError("表情切换或动物图案恢复顺序不符")
+                    shown = game.display_times[before]
+                    playback_started, playback_finished = game.playback_times[-1]
+                    if shown > playback_started:
+                        raise AssertionError("播放回答语音之前必须显示反馈表情")
+                    feedback_seconds = None
+                    if expected is Decision.INCORRECT:
+                        restored = game.display_times[before + 1]
+                        feedback_seconds = restored - shown
+                        if not 1.5 <= feedback_seconds <= 3:
+                            raise AssertionError("答错表情显示时间超出 1.5 秒及设备通信容差")
+                        if not playback_started < restored < playback_finished:
+                            raise AssertionError("答错语音播放期间必须恢复动物图案")
+                    report["answers"].append(
+                        {
+                            "question": index + 1,
+                            "attempt": attempt,
+                            "answer": answer,
+                            "decision": decision.value,
+                            "expression": "009" if expected is Decision.CORRECT else "141",
+                            "animal_restored": expected is Decision.INCORRECT,
+                            "feedback_seconds": feedback_seconds,
+                        }
+                    )
+                    app.logger.info(
+                        "第 %s 题第 %s 次回答：表情及图案恢复检查通过", index + 1, attempt
+                    )
                 reply = game.game.advance()
-            if reply.prepare or game.game.active or game.game.score != 2:
+            if reply.prepare or game.game.active or game.game.score != 1:
                 raise AssertionError("两题结束之后必须完成游戏并停止出题")
             await game.present(reply)
             report["score"] = game.game.score
@@ -61,17 +146,19 @@ async def main() -> None:
             report["microphone_peak"] = peak
             app.logger.info("麦克风检查通过：%s 字节 PCM，峰值 %s", audio_bytes, peak)
             await game.clear()
+            report["complete"] = True
         finally:
             try:
-                await game.generator.close()
+                await game.clear()
             finally:
-                await game.judge.close()
-        output = ROOT / ".artifacts"
-        output.mkdir(exist_ok=True)
-        (output / "device_check.json").write_text(
-            json.dumps(report, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
+                try:
+                    await game.generator.close()
+                finally:
+                    await game.judge.close()
+                    (output / "device_check.json").write_text(
+                        json.dumps(report, ensure_ascii=False, indent=2),
+                        encoding="utf-8",
+                    )
 
 
 if __name__ == "__main__":

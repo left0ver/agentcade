@@ -7,8 +7,10 @@ from typing import Literal
 from watcherobot.application import ApplicationContext
 from watcherobot.media import AudioFormat
 
-from guess_animal.animals import COMMAND_HOTWORDS, Animal
+from guess_animal.animals import COMMAND_HOTWORDS, Animal, encode_vector
 from guess_animal.config import Settings
+from guess_animal.expressions import expression_vector, generation_progress
+from guess_animal.eyes import HIDDEN_EYES, STANDBY_EYES, Look
 from guess_animal.game import Game, Reply
 from guess_animal.generator import AnimalGenerator
 from guess_animal.judge import JevJudge
@@ -48,9 +50,28 @@ class RobotGame:
                 audio, hotwords=COMMAND_HOTWORDS, timeout=seconds + 30
             )
 
-    async def speak(self, text: str) -> None:
+    async def speak(
+        self, text: str, *, feedback: Literal["correct", "incorrect"] | None = None
+    ) -> None:
+        animal_path = None
+        if feedback == "incorrect":
+            if self.game.animal is None:
+                raise ValueError("答错反馈需要当前动物图案")
+            animal_path = encode_vector(self.game.animal.strokes)
         self.app.logger.info("机器人：%s", text)
         pcm = await self.speech.synthesize(text)
+        if feedback:
+            await self.show_vector(expression_vector("009" if feedback == "correct" else "141"))
+        async with asyncio.TaskGroup() as group:
+            group.create_task(self.play_audio(pcm))
+            if animal_path is not None:
+                group.create_task(self.restore_animal(animal_path))
+
+    async def restore_animal(self, path: str) -> None:
+        await asyncio.sleep(1.5)
+        await self.show_vector(path)
+
+    async def play_audio(self, pcm: bytes) -> None:
         playback = await asyncio.to_thread(self.robot.audio.play_pcm, pcm)
         try:
             await asyncio.to_thread(playback.wait, timeout=playback.expected_duration_seconds + 10)
@@ -58,76 +79,65 @@ class RobotGame:
             if not playback.state.terminal:
                 await asyncio.to_thread(playback.cancel)
 
-    async def clear(self, preset: Literal["standby", "thinking"] = "standby") -> None:
-        await asyncio.to_thread(
-            self.robot.expression_runtime.start,
-            preset,
-            accessory="none",
-            auto_blink=True,
-            scale=1.0,
-            scale_x=2.0,
-            scale_y=2.0,
-            left_upper_lid_y=-80,
-            right_upper_lid_y=-80,
-            left_lower_lid_y=80,
-            right_lower_lid_y=80,
-            left_upper_lid_rotation_deg=0,
-            right_upper_lid_rotation_deg=0,
-            left_lower_lid_rotation_deg=0,
-            right_lower_lid_rotation_deg=0,
-        )
+    async def clear(self, eyes: Look = STANDBY_EYES) -> None:
+        await asyncio.to_thread(self.robot.expression_runtime.start, "standby", **eyes)
 
     async def draw(self, animal: Animal) -> None:
         steps = animal.drawing_steps()
-        await asyncio.to_thread(
-            self.robot.expression_runtime.start,
-            "standby",
-            accessory="custom_vector",
-            custom_vector_path=steps[0],
-            custom_accessory_layer="front",
-            accessory_scale=1.0,
-            accessory_x=0.0,
-            accessory_y=0.0,
-            auto_blink=False,
-            gaze_x=0.0,
-            gaze_y=0.0,
-            scale=0.5,
-            scale_x=1.0,
-            scale_y=1.0,
-            # 眼睑遮罩覆盖原有眼睛，自定义动物图案位于独立图层。
-            left_upper_lid_y=0,
-            right_upper_lid_y=0,
-            left_lower_lid_y=0,
-            right_lower_lid_y=0,
-            left_upper_lid_rotation_deg=0,
-            right_upper_lid_rotation_deg=0,
-            left_lower_lid_rotation_deg=0,
-            right_lower_lid_rotation_deg=0,
-            color="#FFFFFF",
-            transition_ms=0,
-        )
+        await self.show_vector(steps[0])
         for path in steps[1:]:
             await asyncio.sleep(0.16)
             await asyncio.to_thread(self.robot.expression_runtime.update, custom_vector_path=path)
+
+    async def show_vector(self, path: str) -> None:
+        await asyncio.to_thread(
+            self.robot.expression_runtime.start,
+            "standby",
+            **HIDDEN_EYES,
+            tag="none",
+            custom_vector_path=path,
+        )
 
     async def present(self, reply: Reply) -> None:
         if reply.clear:
             await self.clear()
         if reply.text:
-            await self.speak(reply.text)
+            await self.speak(reply.text, feedback=reply.feedback)
         if reply.prepare:
             await self.prepare_question()
 
+    async def animate_generation(self, started: float, completed: asyncio.Event) -> None:
+        previous = 0
+        while not completed.is_set():
+            progress = generation_progress(time.monotonic() - started, self.generation_estimate)
+            if progress != previous:
+                await asyncio.to_thread(
+                    self.robot.expression_runtime.update,
+                    custom_vector_path=expression_vector("111", progress),
+                )
+                previous = progress
+            await asyncio.sleep(0.4)
+
     async def prepare_question(self) -> None:
         number = self.game.index + 1
-        await self.clear("thinking")
+        await self.show_vector(expression_vector("111"))
         await self.speak(
             f"正在生成第{number}题，大约需要{self.generation_estimate}秒。准备好了我会告诉你，请稍等。"
         )
         started = time.monotonic()
         self.app.logger.info("正在生成第 %s 题", number)
-        (animal,) = await self.generator.generate(1)
+        completed = asyncio.Event()
+        async with asyncio.TaskGroup() as group:
+            group.create_task(self.animate_generation(started, completed))
+            try:
+                (animal,) = await self.generator.generate(1)
+            finally:
+                completed.set()
         self.app.logger.info("单题生成完成，耗时 %.1f 秒", time.monotonic() - started)
+        await asyncio.to_thread(
+            self.robot.expression_runtime.update, custom_vector_path=expression_vector("111", 100)
+        )
+        await asyncio.sleep(0.25)
         await self.draw(animal)
         await self.speak(f"第{number}题画好了！请看图，说出动物名称。")
         self.game.set_question(animal)
