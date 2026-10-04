@@ -21,6 +21,16 @@ class DrawingProvider(Protocol):
     async def close(self) -> None: ...
 
 
+def format_system_prompt(system: str, schema: dict) -> str:
+    return (
+        system
+        + "\n返回值必须符合以下完整 JSON Schema，包含其中所有 $defs 和 $ref 定义。"
+        + "请输出完整的 JSON 对象，并闭合所有数组和对象。\n```json\n"
+        + json.dumps(schema, ensure_ascii=False, indent=2)
+        + "\n```\n"
+    )
+
+
 class DeepSeekProvider:
     def __init__(self, settings: Settings):
         self.model = settings.deepseek_model
@@ -37,7 +47,7 @@ class DeepSeekProvider:
             result = await self.client.chat.completions.create(
                 model=self.model,
                 messages=[
-                    {"role": "system", "content": system},
+                    {"role": "system", "content": format_system_prompt(system, schema)},
                     {"role": "user", "content": json.dumps(request, ensure_ascii=False)},
                 ],
                 response_format={"type": "json_object"},
@@ -127,7 +137,7 @@ class LocalCLIProvider:
         directory = ROOT / ".artifacts" / "provider_runs" / self.name / uuid4().hex
         directory.mkdir(parents=True)
         prompt = (
-            system
+            format_system_prompt(system, schema)
             + "\n直接根据以下要求生成 JSON 数据。全部信息已经提供，无需调用工具或读取、修改文件。\n"
             + json.dumps(request, ensure_ascii=False)
         )
