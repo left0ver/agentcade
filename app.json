@@ -1,0 +1,19 @@
+{
+  "schema_version": 2,
+  "id": "local.desktop_robot",
+  "name": "你画我猜",
+  "version": "0.1.0",
+  "requires_watcherobot": ">=0.1.10,<0.2",
+  "dependencies": [
+    "python-dotenv>=1.1,<2",
+    "typesafe-sdk>=0.7.2",
+    "websockets>=15,<16"
+  ],
+  "supported_host_platforms": [
+    "windows",
+    "macos"
+  ],
+  "description": "看机器人画动物，通过语音回答、获取提示和切换题目。",
+  "author": "Local Developer",
+  "icon": "icon.svg"
+}
