@@ -1,8 +1,7 @@
-import random
 from dataclasses import dataclass
 from enum import Enum
 
-from guess_animal.animals import ANIMALS, Animal
+from guess_animal.animals import Animal
 
 
 class Decision(str, Enum):
@@ -20,13 +19,13 @@ class Decision(str, Enum):
 class Reply:
     text: str = ""
     advance: bool = False
-    draw: bool = False
+    prepare: bool = False
     clear: bool = False
 
 
 class Game:
     def __init__(self, rounds: int = 5, attempts: int = 2):
-        if not 1 <= rounds <= len(ANIMALS) or attempts < 1:
+        if not 1 <= rounds <= 10 or attempts < 1:
             raise ValueError("题目数量或回答次数无效")
         self.rounds = rounds
         self.max_attempts = attempts
@@ -41,21 +40,31 @@ class Game:
 
     @property
     def animal(self) -> Animal | None:
-        return self.deck[self.index] if self.active else None
+        return self.deck[self.index] if self.active and self.index < len(self.deck) else None
 
     def start(self) -> Reply:
         if self.active:
+            if self.animal is None:
+                return Reply("题目正在准备，请稍等。")
             return Reply("游戏正在进行，请说出动物名称，也可以说提示、下一题或结束游戏。")
-        self.deck = random.sample(ANIMALS, self.rounds)
+        self.deck = []
         self.index = self.score = self.attempts = self.silence_count = 0
         self.active = True
         self.resolved = False
         self.revision += 1
         return Reply(
             f"我们来玩你画我猜！一共{self.rounds}题，每题可以回答{self.max_attempts}次。"
-            "看好我的图案，直接说动物名称，也可以说提示、下一题或结束游戏。第一题！",
-            draw=True,
+            "直接说动物名称，也可以说提示、下一题或结束游戏。",
+            prepare=True,
         )
+
+    def set_question(self, animal: Animal) -> None:
+        if not self.active or self.resolved or len(self.deck) != self.index:
+            raise RuntimeError("当前没有等待生成的题目")
+        if any(item.name == animal.name or item.id == animal.id for item in self.deck):
+            raise ValueError("同一局的动物不能重复")
+        self.deck.append(animal)
+        self.revision += 1
 
     def handle(self, decision: Decision, revision: int) -> Reply:
         if revision != self.revision:
@@ -65,15 +74,14 @@ class Game:
             return self.start()
         if not self.active:
             return Reply()
-        animal = self.animal
-        assert animal is not None
         if decision is Decision.END:
             self.active = False
             self.revision += 1
             return Reply(
                 f"游戏结束，你答对了{self.score}题。想继续时，说我们来玩你画我猜。", clear=True
             )
-        if self.resolved:
+        animal = self.animal
+        if self.resolved or animal is None:
             return Reply()
         if decision is Decision.HINT:
             return Reply(animal.hint + "请说出它的名字。")
@@ -106,10 +114,10 @@ class Game:
                 "想继续时，说我们来玩你画我猜。",
                 clear=True,
             )
-        return Reply(f"第{self.index + 1}题，请看图案。", draw=True)
+        return Reply(prepare=True)
 
     def silence(self) -> Reply:
-        if not self.active:
+        if not self.active or self.animal is None:
             return Reply()
         self.silence_count += 1
         if self.silence_count >= 3:

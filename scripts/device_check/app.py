@@ -10,8 +10,8 @@ from watcherobot.application import ApplicationContext
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from guess_animal.animals import ANIMALS
 from guess_animal.config import ROOT, Settings
+from guess_animal.game import Decision, Game
 from guess_animal.robot_game import RobotGame
 
 
@@ -19,17 +19,36 @@ async def main() -> None:
     settings = Settings.from_environment()
     async with ApplicationContext.from_environment() as app:
         game = RobotGame(app, settings)
-        report = {"drawings": [], "playback_seconds": []}
+        game.game = Game(rounds=2)
+        report = {"questions": []}
         try:
-            for animal in ANIMALS:
-                await game.draw(animal)
-                report["drawings"].append(animal.id)
-                app.logger.info("设备接受全部绘图指令：%s", animal.name)
-            for text in ("图案检查完成。", "正在检查语音播放。", "准备检查麦克风。"):
+            reply = game.game.start()
+            for index in range(2):
+                if not reply.prepare or game.game.animal is not None:
+                    raise AssertionError("当前必须处于等待生成单题的状态")
+                if len(game.game.deck) != index:
+                    raise AssertionError("下一题不能提前生成")
                 start = time.monotonic()
-                await game.speak(text)
-                report["playback_seconds"].append(round(time.monotonic() - start, 2))
-                app.logger.info("设备确认播放完成")
+                await game.present(reply)
+                animal = game.game.animal
+                if animal is None or len(game.game.deck) != index + 1:
+                    raise AssertionError("生成和完成提示之后必须进入当前题目")
+                report["questions"].append(
+                    {"animal": animal.id, "seconds": round(time.monotonic() - start, 2)}
+                )
+                decision = await game.judge.decide(animal.name, animal)
+                if decision is not Decision.CORRECT:
+                    raise AssertionError("Jev 必须认可真实生成的答案")
+                reply = game.game.handle(decision, game.game.revision)
+                if not reply.advance:
+                    raise AssertionError("正确回答之后必须结束当前题目")
+                await game.present(reply)
+                reply = game.game.advance()
+            if reply.prepare or game.game.active or game.game.score != 2:
+                raise AssertionError("两题结束之后必须完成游戏并停止出题")
+            await game.present(reply)
+            report["score"] = game.game.score
+            await game.speak("准备检查麦克风。")
             audio_bytes = 0
             peak = 0
             async with aclosing(game.microphone(3)) as microphone:
@@ -43,7 +62,10 @@ async def main() -> None:
             app.logger.info("麦克风检查通过：%s 字节 PCM，峰值 %s", audio_bytes, peak)
             await game.clear()
         finally:
-            await game.judge.close()
+            try:
+                await game.generator.close()
+            finally:
+                await game.judge.close()
         output = ROOT / ".artifacts"
         output.mkdir(exist_ok=True)
         (output / "device_check.json").write_text(

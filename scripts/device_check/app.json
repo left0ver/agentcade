@@ -4,7 +4,7 @@
   "name": "猜动物设备检查",
   "version": "0.1.0",
   "requires_watcherobot": ">=0.1.10,<0.2",
-  "dependencies": ["python-dotenv>=1.1,<2", "typesafe-sdk>=0.7.2", "websockets>=15,<16"],
+  "dependencies": ["openai>=2,<3", "pydantic>=2,<3", "python-dotenv>=1.1,<2", "typesafe-sdk>=0.7.2", "websockets>=15,<16"],
   "supported_host_platforms": ["windows", "macos"],
   "description": "验证真实机器人的动物绘图、PCM 播放和麦克风采集。",
   "author": "Local Developer",
