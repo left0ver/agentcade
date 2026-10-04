@@ -1,6 +1,5 @@
 import asyncio
 import hashlib
-import json
 import secrets
 import time
 import unicodedata
@@ -8,13 +7,14 @@ from pathlib import Path
 from typing import Annotated
 from uuid import uuid4
 
-from openai import AsyncOpenAI
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from guess_animal.animals import Animal, Stroke, encode_vector
 from guess_animal.config import ROOT, Settings
+from guess_animal.providers import create_provider
 
 Coordinate = Annotated[int, Field(strict=True, ge=0, le=411)]
+Coordinates = Annotated[list[Coordinate], Field(min_length=2, max_length=2)]
 Name = Annotated[str, Field(min_length=1, max_length=24)]
 
 
@@ -25,7 +25,7 @@ def normalize_name(value: str) -> str:
 class GeneratedStroke(BaseModel):
     model_config = ConfigDict(extra="forbid")
     width: int = Field(strict=True, ge=1, le=48)
-    points: list[tuple[Coordinate, Coordinate]] = Field(min_length=2, max_length=48)
+    points: list[Coordinates] = Field(min_length=2, max_length=48)
 
 
 class GeneratedAnimal(BaseModel):
@@ -42,7 +42,10 @@ class GeneratedAnimal(BaseModel):
             name=self.name,
             aliases=tuple(self.aliases),
             hint=self.hint,
-            strokes=tuple(Stroke(tuple(stroke.points), stroke.width) for stroke in self.strokes),
+            strokes=tuple(
+                Stroke(tuple((x, y) for x, y in stroke.points), stroke.width)
+                for stroke in self.strokes
+            ),
         )
 
     @model_validator(mode="after")
@@ -92,13 +95,13 @@ class GenerationHistory(BaseModel):
             normalize_name(name) for animal in animals for name in (animal.name, *animal.aliases)
         ]
         if set(names) & set(self.recent_names):
-            raise ValueError("DeepSeek 返回了近期已经使用的动物")
+            raise ValueError("绘图 provider 返回了近期已经使用的动物")
         hashes = [
             hashlib.sha256(bytes.fromhex(encode_vector(animal.strokes))).hexdigest()
             for animal in animals
         ]
         if set(hashes) & set(self.drawing_hashes):
-            raise ValueError("DeepSeek 返回了已经生成过的相同图案")
+            raise ValueError("绘图 provider 返回了已经生成过的相同图案")
         return GenerationHistory(
             recent_names=(self.recent_names + names)[-80:],
             drawing_hashes=self.drawing_hashes + hashes,
@@ -141,13 +144,7 @@ hint 描述习性或外形，不得包含 name 或任何 alias，也不能直接
 
 class AnimalGenerator:
     def __init__(self, settings: Settings, history_path: Path | None = None):
-        self.client = AsyncOpenAI(
-            api_key=settings.deepseek_api_key,
-            base_url=settings.deepseek_base_url,
-            timeout=120,
-            max_retries=0,
-        )
-        self.model = settings.deepseek_model
+        self.provider = create_provider(settings)
         self.history_path = history_path or ROOT / ".artifacts" / "generation_history.json"
         self.history = (
             GenerationHistory.model_validate_json(self.history_path.read_text(encoding="utf-8"))
@@ -174,26 +171,12 @@ class AnimalGenerator:
                 ),
                 "instruction": "请生成指定数量的全新动物全身图案题目，避开近期动物及其同义名称。",
             }
-            async with asyncio.timeout(130):
-                result = await self.client.chat.completions.create(
-                    model=self.model,
-                    messages=[
-                        {"role": "system", "content": SYSTEM_PROMPT},
-                        {"role": "user", "content": json.dumps(prompt, ensure_ascii=False)},
-                    ],
-                    response_format={"type": "json_object"},
-                    extra_body={"thinking": {"type": "enabled"}},
-                    reasoning_effort="low",
-                    max_tokens=32768,
-                )
-            choice = result.choices[0]
-            if choice.finish_reason != "stop" or not choice.message.content:
-                raise RuntimeError(
-                    f"DeepSeek 未返回完整的动物题目，结束原因：{choice.finish_reason}"
-                )
-            generated = GeneratedRound.model_validate_json(choice.message.content)
+            output = await self.provider.generate(
+                SYSTEM_PROMPT, prompt, GeneratedRound.model_json_schema()
+            )
+            generated = GeneratedRound.model_validate_json(output)
             if len(generated.animals) != count:
-                raise ValueError("DeepSeek 返回的动物数量与请求不一致")
+                raise ValueError("绘图 provider 返回的动物数量与请求不一致")
             animals = tuple(item.animal() for item in generated.animals)
             history = self.history.updated(animals)
             self.history_path.parent.mkdir(parents=True, exist_ok=True)
@@ -210,4 +193,4 @@ class AnimalGenerator:
             return animals
 
     async def close(self) -> None:
-        await self.client.close()
+        await self.provider.close()

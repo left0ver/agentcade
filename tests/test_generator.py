@@ -21,6 +21,14 @@ def test_coordinates_require_integers_within_screen(coordinate):
         GeneratedRound.model_validate(data)
 
 
+@pytest.mark.parametrize("coordinates", [[120], [120, 150, 180]])
+def test_each_point_requires_exactly_two_coordinates(coordinates):
+    data = recorded_round()
+    data["animals"][0]["strokes"][0]["points"][0] = coordinates
+    with pytest.raises(ValidationError):
+        GeneratedRound.model_validate(data)
+
+
 def test_repeated_animal_aliases_are_rejected():
     data = recorded_round()
     data["animals"][1]["aliases"].append(data["animals"][0]["name"])

@@ -1,3 +1,4 @@
+import argparse
 import asyncio
 import json
 import time
@@ -9,11 +10,17 @@ from guess_animal.generator import AnimalGenerator
 
 
 async def main() -> None:
-    output = ROOT / ".artifacts" / "generation_check"
-    generator = AnimalGenerator(Settings.from_environment(), output / "history.json")
+    parser = argparse.ArgumentParser(description="调用所选 provider 验证真实动物图案生成")
+    parser.add_argument("--count", type=int, default=3, help="连续生成的题目数量，默认三题")
+    args = parser.parse_args()
+    if not 1 <= args.count <= 10:
+        parser.error("检查题目数量必须位于一至十之间")
+    settings = Settings.from_environment()
+    output = ROOT / ".artifacts" / "generation_check" / settings.drawing_provider
+    generator = AnimalGenerator(settings, output / "history.json")
     report = []
     try:
-        for index in range(3):
+        for index in range(args.count):
             start = time.monotonic()
             animals = await generator.generate(1)
             if len(animals) != 1:

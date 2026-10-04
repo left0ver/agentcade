@@ -2,6 +2,7 @@ import asyncio
 import time
 from collections.abc import AsyncIterator
 from contextlib import aclosing
+from typing import Literal
 
 from watcherobot.application import ApplicationContext
 from watcherobot.media import AudioFormat
@@ -19,9 +20,11 @@ class RobotGame:
         self.app = app
         self.robot = app.robot
         self.game = Game()
+        self.generation_estimate = settings.drawing_estimate_seconds
         self.speech = QwenSpeech(settings)
-        self.judge = JevJudge(settings)
         self.generator = AnimalGenerator(settings)
+        self.judge = JevJudge(settings)
+        self.app.logger.info("绘图 provider：%s", settings.drawing_provider)
 
     async def microphone(self, seconds: float) -> AsyncIterator[bytes]:
         session = await asyncio.to_thread(self.robot.microphone.open_pcm, queue_size=128)
@@ -55,10 +58,10 @@ class RobotGame:
             if not playback.state.terminal:
                 await asyncio.to_thread(playback.cancel)
 
-    async def clear(self) -> None:
+    async def clear(self, preset: Literal["standby", "thinking"] = "standby") -> None:
         await asyncio.to_thread(
             self.robot.expression_runtime.start,
-            "standby",
+            preset,
             accessory="none",
             auto_blink=True,
             scale=1.0,
@@ -108,7 +111,7 @@ class RobotGame:
             await asyncio.to_thread(self.robot.expression_runtime.update, custom_vector_path=path)
 
     async def present(self, reply: Reply) -> None:
-        if reply.clear or reply.prepare:
+        if reply.clear:
             await self.clear()
         if reply.text:
             await self.speak(reply.text)
@@ -117,8 +120,9 @@ class RobotGame:
 
     async def prepare_question(self) -> None:
         number = self.game.index + 1
+        await self.clear("thinking")
         await self.speak(
-            f"正在生成第{number}题，大约需要半分钟到一分钟。准备好了我会告诉你，请稍等。"
+            f"正在生成第{number}题，大约需要{self.generation_estimate}秒。准备好了我会告诉你，请稍等。"
         )
         started = time.monotonic()
         self.app.logger.info("正在生成第 %s 题", number)

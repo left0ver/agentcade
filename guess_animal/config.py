@@ -13,7 +13,14 @@ DEFAULT_BASE_URL = "https://llm-2lb3ys6gg99neqej.cn-beijing.maas.aliyuncs.com/co
 class Settings:
     dashscope_api_key: str = field(repr=False)
     typesafe_api_key: str = field(repr=False)
-    deepseek_api_key: str = field(repr=False)
+    deepseek_api_key: str = field(default="", repr=False)
+    drawing_provider: str = "deepseek"
+    drawing_timeout_seconds: int = 180
+    drawing_estimate_seconds: int = 60
+    claude_code_command: str = "claude"
+    claude_code_model: str = ""
+    codex_command: str = "codex"
+    codex_model: str = ""
     deepseek_base_url: str = "https://api.deepseek.com"
     deepseek_model: str = "deepseek-flash"
     base_url: str = DEFAULT_BASE_URL
@@ -27,18 +34,24 @@ class Settings:
         for name in (
             "dashscope_api_key",
             "typesafe_api_key",
-            "deepseek_api_key",
-            "deepseek_model",
             "asr_model",
             "tts_model",
             "tts_voice",
         ):
             if not getattr(self, name).strip():
                 raise ValueError(f"配置 {name} 不能为空")
-        for name, url in (
-            ("DASHSCOPE_BASE_URL", self.base_url),
-            ("DEEPSEEK_BASE_URL", self.deepseek_base_url),
-        ):
+        if self.drawing_provider not in {"deepseek", "claude_code", "codex"}:
+            raise ValueError("DRAWING_PROVIDER 必须是 deepseek、claude_code 或 codex")
+        if self.drawing_timeout_seconds <= 0 or self.drawing_estimate_seconds <= 0:
+            raise ValueError("绘图超时和预计等待时间必须大于零")
+        urls = [("DASHSCOPE_BASE_URL", self.base_url)]
+        if self.drawing_provider == "deepseek":
+            if not self.deepseek_api_key.strip() or not self.deepseek_model.strip():
+                raise ValueError("DeepSeek provider 需要 DEEPSEEK_API_KEY 和 DEEPSEEK_MODEL")
+            urls.append(("DEEPSEEK_BASE_URL", self.deepseek_base_url))
+        elif not getattr(self, f"{self.drawing_provider}_command").strip():
+            raise ValueError("本机绘图工具的命令路径不能为空")
+        for name, url in urls:
             parts = urlsplit(url)
             if parts.scheme != "https" or not parts.hostname or parts.username or parts.password:
                 raise ValueError(f"{name} 必须是有效的 HTTPS 地址")
@@ -56,7 +69,14 @@ class Settings:
         return cls(
             dashscope_api_key=os.environ["DASHSCOPE_API_KEY"],
             typesafe_api_key=os.environ["TYPESAFE_API_KEY"],
-            deepseek_api_key=os.environ["DEEPSEEK_API_KEY"],
+            deepseek_api_key=os.getenv("DEEPSEEK_API_KEY", ""),
+            drawing_provider=os.getenv("DRAWING_PROVIDER", "deepseek"),
+            drawing_timeout_seconds=int(os.getenv("DRAWING_TIMEOUT_SECONDS", "180")),
+            drawing_estimate_seconds=int(os.getenv("DRAWING_ESTIMATE_SECONDS", "60")),
+            claude_code_command=os.getenv("CLAUDE_CODE_COMMAND", "claude"),
+            claude_code_model=os.getenv("CLAUDE_CODE_MODEL", ""),
+            codex_command=os.getenv("CODEX_COMMAND", "codex"),
+            codex_model=os.getenv("CODEX_MODEL", ""),
             deepseek_base_url=os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com"),
             deepseek_model=os.getenv("DEEPSEEK_MODEL", "deepseek-flash"),
             base_url=os.getenv("DASHSCOPE_BASE_URL", DEFAULT_BASE_URL),
