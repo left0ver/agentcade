@@ -61,6 +61,17 @@ class RobotGame:
             "standby",
             accessory="none",
             auto_blink=True,
+            scale=1.0,
+            scale_x=2.0,
+            scale_y=2.0,
+            left_upper_lid_y=-80,
+            right_upper_lid_y=-80,
+            left_lower_lid_y=80,
+            right_lower_lid_y=80,
+            left_upper_lid_rotation_deg=0,
+            right_upper_lid_rotation_deg=0,
+            left_lower_lid_rotation_deg=0,
+            right_lower_lid_rotation_deg=0,
         )
 
     async def draw(self, animal: Animal) -> None:
@@ -77,7 +88,18 @@ class RobotGame:
             auto_blink=False,
             gaze_x=0.0,
             gaze_y=0.0,
-            scale=0.7,
+            scale=0.5,
+            scale_x=1.0,
+            scale_y=1.0,
+            # 眼睑遮罩覆盖原有眼睛，自定义动物图案位于独立图层。
+            left_upper_lid_y=0,
+            right_upper_lid_y=0,
+            left_lower_lid_y=0,
+            right_lower_lid_y=0,
+            left_upper_lid_rotation_deg=0,
+            right_upper_lid_rotation_deg=0,
+            left_lower_lid_rotation_deg=0,
+            right_lower_lid_rotation_deg=0,
             color="#FFFFFF",
             transition_ms=0,
         )
@@ -95,7 +117,9 @@ class RobotGame:
 
     async def prepare_question(self) -> None:
         number = self.game.index + 1
-        await self.speak(f"正在生成第{number}题，大约需要三十秒。准备好了我会告诉你，请稍等。")
+        await self.speak(
+            f"正在生成第{number}题，大约需要半分钟到一分钟。准备好了我会告诉你，请稍等。"
+        )
         started = time.monotonic()
         self.app.logger.info("正在生成第 %s 题", number)
         (animal,) = await self.generator.generate(1)
