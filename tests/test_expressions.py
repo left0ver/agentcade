@@ -1,9 +1,9 @@
 import math
-from xml.etree import ElementTree
 
 import pytest
 from shapely import LineString, Polygon, unary_union
 from svgelements import SVG, Color, Path, Shape
+from watcherobot.distribution.source_files import collect_application_source_files
 from watcherobot.robot import ExpressionRuntimeDomain, _expression_custom_vector_path
 
 from guess_animal.config import ROOT
@@ -17,23 +17,9 @@ from guess_animal.eyes import HIDDEN_EYES
 
 
 @pytest.mark.parametrize("code", EXPRESSION_FILES)
-def test_selected_artwork_matches_the_requested_overview(code):
-    namespace = {"svg": "http://www.w3.org/2000/svg"}
-    overview = ElementTree.parse(ROOT / "designs/eyes/D-yanwenzi.svg").getroot()
-    previous = None
-    label = str(int(code)).zfill(2)
-    for element in overview:
-        if element.tag.endswith("text") and (element.text or "").split(" ")[0] == label:
-            selected = previous.find("svg:g[@clip-path]", namespace)
-            break
-        previous = element
-    else:
-        raise AssertionError(f"表情目录缺少 {code}")
-    individual = ElementTree.parse(ROOT / "designs/eyes/D-yanwenzi" / EXPRESSION_FILES[code])
-    group = individual.getroot().find("svg:g[@clip-path]", namespace)
-    assert ElementTree.canonicalize(ElementTree.tostring(selected), strip_text=True) == (
-        ElementTree.canonicalize(ElementTree.tostring(group), strip_text=True)
-    )
+def test_expression_assets_are_included_in_application(code):
+    source = ROOT / "emojis" / EXPRESSION_FILES[code]
+    assert source.relative_to(ROOT) in collect_application_source_files(ROOT)
 
 
 @pytest.mark.parametrize(
@@ -49,7 +35,7 @@ def test_all_expression_frames_fit_the_real_sdk(code, progress):
 
 @pytest.mark.parametrize("code,progress", [("009", 0), ("111", 62), ("141", 0)])
 def test_vector_geometry_preserves_svg_strokes_and_filled_regions(code, progress):
-    svg = SVG.parse(str(ROOT / "designs/eyes/D-yanwenzi" / EXPRESSION_FILES[code]))
+    svg = SVG.parse(str(ROOT / "emojis" / EXPRESSION_FILES[code]))
     regions = []
     for shape in svg.elements():
         if not isinstance(shape, Shape):

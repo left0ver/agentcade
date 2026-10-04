@@ -19,7 +19,7 @@ WHITE = Color("white")
 
 @lru_cache(maxsize=3)
 def _shapes(code: ExpressionCode) -> tuple[Shape, ...]:
-    source = ROOT / "designs" / "eyes" / "D-yanwenzi" / EXPRESSION_FILES[code]
+    source = ROOT / "emojis" / EXPRESSION_FILES[code]
     svg = SVG.parse(str(source))
     if svg.width != 412 or svg.height != 412:
         raise ValueError("表情 SVG 必须使用 412×412 画布")
