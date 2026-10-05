@@ -12,9 +12,11 @@ from guess_animal.animals import encode_vector
 from guess_animal.audio_stream import RtcAudioPlayer, rtc_command
 from guess_animal.config import ROOT, Settings
 from guess_animal.expressions import expression_vector
+from guess_animal.game import Decision
 from guess_animal.robot_game import RobotGame
 from guess_animal.speech import QwenSpeech
 from tests.e2e.audio import write_wav
+from tests.samples import recorded_animals
 
 
 class ObservedGame(RobotGame):
@@ -25,6 +27,14 @@ class ObservedGame(RobotGame):
         self.animals = []
         self.pending_speeches = 0
         self.playing = False
+        self.motions = []
+
+    async def perform_feedback_motion(self, feedback):
+        assert not self.input.opened.is_set(), "动作开始时麦克风仍然开启"
+        started = time.monotonic()
+        await super().perform_feedback_motion(feedback)
+        assert not self.input.opened.is_set(), "动作结束前麦克风已经开启"
+        self.motions.append({"feedback": feedback, "started": started, "finished": time.monotonic()})
 
     async def speak(self, text, *, feedback=None, revision=None):
         self.requests.append(text)
@@ -291,6 +301,58 @@ async def check_expression_progress(game, report):
         assert metrics.first_frame_seconds < metrics.input_finished_seconds
 
 
+async def check_feedback_motion(game, report):
+    assert game.robot.supports("motion")
+    animals = recorded_animals()
+    async with asyncio.TaskGroup() as group:
+        capturing = group.create_task(game.input.capture())
+        async with asyncio.timeout(10):
+            await game.input.opened.wait()
+        game.game.start()
+        game.game.set_question(animals[0])
+        await game.draw(animals[0])
+        hint = game.game.handle(Decision.HINT, game.game.revision)
+        await game.speak(hint.text, feedback=hint.feedback)
+        assert not game.motions
+        for index, decision in enumerate((
+            Decision.INCORRECT, Decision.CORRECT, Decision.INCORRECT, Decision.INCORRECT,
+        )):
+            if index == 2:
+                game.game.advance()
+                game.game.set_question(animals[1])
+                await game.draw(animals[1])
+            before = len(game.motions)
+            displays = len(game.displays)
+            reply = game.game.handle(decision, game.game.revision)
+            await game.speak(reply.text, feedback=reply.feedback)
+            assert len(game.motions) == before + 1
+            motion, voice = game.motions[-1], game.voices[-1]
+            assert motion["feedback"] == reply.feedback
+            assert motion["started"] < voice["finished"]
+            assert voice["started"] < motion["finished"]
+            assert game.input.opened.is_set()
+            expected = "009" if decision is Decision.CORRECT else "141"
+            assert game.displays[displays]["path"] == expression_vector(expected)
+            if decision is Decision.INCORRECT:
+                restored = game.displays[displays + 1]
+                assert restored["path"] == encode_vector(game.game.animal.strokes)
+                assert 1.5 <= restored["time"] - game.displays[displays]["time"] <= 3
+        report["feedback_motions"] = [item["feedback"] for item in game.motions]
+        await game.input.pause()
+        motion = asyncio.create_task(game.perform_feedback_motion("correct"))
+        await asyncio.sleep(0.05)
+        motion.cancel()
+        try:
+            await motion
+        except asyncio.CancelledError:
+            report["motion_cancelled"] = True
+        assert motion.cancelled()
+        await game.perform_feedback_motion("correct")
+        game.input.resume()
+        await game.input.wait_ready()
+        capturing.cancel()
+
+
 async def main():
     request = json.loads((ROOT / ".artifacts/tests/robot-request.json").read_text())
     output = Path(request["output"])
@@ -299,9 +361,12 @@ async def main():
     async with ApplicationContext.from_environment() as app:
         game = ObservedGame(app, settings)
         try:
-            if request["scenario"] == "expressions":
+            if request["scenario"] in {"expressions", "feedback"}:
                 try:
-                    await check_expression_progress(game, report)
+                    if request["scenario"] == "feedback":
+                        await check_feedback_motion(game, report)
+                    else:
+                        await check_expression_progress(game, report)
                 finally:
                     await game.generator.close()
                     await game.conversation.close()
@@ -318,6 +383,7 @@ async def main():
         finally:
             report.update(
                 heard=game.heard, spoken=game.spoken, displays=game.displays, voices=game.voices,
+                motions=game.motions,
                 microphone_bytes=game.input.received_pcm_bytes,
                 rtc_active_after_shutdown=app.rtc.snapshot()["active"],
             )

@@ -24,6 +24,12 @@ def test_expression_progress_during_streaming_audio(run_directory):
     assert report["progress"] == list(range(101))
 
 
+def test_answer_feedback_moves_head_with_speech(run_directory):
+    report = run_robot(run_directory, "feedback")
+    assert report["feedback_motions"] == ["incorrect", "correct", "incorrect", "incorrect"]
+    assert report["motion_cancelled"]
+
+
 def run_robot(run_directory, scenario):
     if sys.platform != "darwin":
         pytest.fail("语音 E2E 使用 macOS afplay，请在连接机器人的 Mac 上执行")

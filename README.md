@@ -7,16 +7,17 @@
 对机器人说“我们来玩你画我猜”开始。
 
 - 每局 5 题，每题 2 次机会，答对得 1 分，同一局动物不重复
+- 答对时点头，答错时摇头，动作与反馈语音同时进行，完成后回到居中姿态
 - 说“提示”要线索，每题 3 条，不占机会；第一次答错也会给一条
 - 说“下一题”跳过，说“结束游戏”退出
 - 连续 3 次、每次 20 秒没人说话，本局自动结束
 - 画图要等一会儿，这段时间可以随便聊天，聊天不算答题
 
-机器人说话时不收音，等它说完再开口。
+机器人说话和执行答题反馈动作时不收音，语音与动作都完成后恢复收音。
 
 ## 运行
 
-需要 Python 3.11+、[uv](https://docs.astral.sh/uv/)，以及一台和电脑在同一局域网的机器人，固件支持 `expression.runtime.v3`、`expression.vector_accessory.v1`、`microphone`、`rtc.audio.full_duplex.v1`。
+需要 Python 3.11+、[uv](https://docs.astral.sh/uv/)，以及一台和电脑在同一局域网的机器人，固件支持 `expression.runtime.v3`、`expression.vector_accessory.v1`、`microphone`、`rtc.audio.full_duplex.v1`、`motion`。
 
 ```bash
 cp .env.example .env              # 填入 API key
@@ -92,6 +93,7 @@ E2E 会调用真实服务并产生费用。运行全部 provider 的比较测试
 | `uv run pytest tests/e2e/test_services.py -m e2e -q` | 三个 provider 的生成、历史保存和聊天上下文、Jev 分类、流式 TTS 与连续 ASR |
 | `uv run pytest tests/e2e/test_robot.py -m e2e -q` | 真机，仅 macOS：完整五题语音游戏、提示、表情、计分、跳题、交流、结束及音频资源释放 |
 | `uv run pytest tests/e2e/test_robot.py -m e2e -k expression -q` | 真机：播放语音时逐一验证进度条 0–100 的全部状态 |
+| `uv run pytest tests/e2e/test_robot.py -m e2e -k answer_feedback -q` | 真机：答对点头、答错摇头、语音和表情同时反馈、动作取消与收音恢复 |
 | `uv run pytest tests/e2e/test_services.py -m e2e -k codex -q` | 单独检查 Codex 绘图 |
 | `uv run watcherobot app run scripts/eye_preview` | 真机：逐个预览眼型，不调模型 |
 

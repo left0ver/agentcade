@@ -98,21 +98,39 @@ class RobotGame:
                 raise ValueError("答错反馈需要当前动物图案")
             animal_path = encode_vector(self.game.animal.strokes)
         self.app.logger.info("机器人：%s", text)
+        await self.input.pause()
         async with asyncio.TaskGroup() as group:
             async def on_start() -> None:
                 if feedback:
                     await self.show_vector(
                         expression_vector("009" if feedback == "correct" else "141")
                     )
+                    group.create_task(self.perform_feedback_motion(feedback))
                 if animal_path is not None:
                     group.create_task(self.restore_animal(animal_path))
 
-            await self.input.pause()
-            try:
-                await self.play_audio(self.speech.synthesize_stream(text), on_start=on_start)
-            finally:
-                self.input.resume()
-            await self.input.wait_ready()
+            await self.play_audio(self.speech.synthesize_stream(text), on_start=on_start)
+        self.input.resume()
+        await self.input.wait_ready()
+
+    async def perform_feedback_motion(self, feedback: Literal["correct", "incorrect"]) -> None:
+        positions = {
+            "correct": ((90, 115), (90, 105), (90, 115)),
+            "incorrect": ((90, 115), (105, 115), (75, 115), (90, 115)),
+        }[feedback]
+        completed = False
+        try:
+            for pan, tilt in positions:
+                job = await rtc_command(
+                    self.robot.motion.move_to,
+                    pan_deg=pan, tilt_deg=tilt, duration_ms=350, profile="ease_in_out",
+                )
+                await rtc_command(job.wait, 3.0)
+                self.app.logger.info("反馈动作完成：%s，pan=%s，tilt=%s", feedback, pan, tilt)
+            completed = True
+        finally:
+            if not completed:
+                await rtc_command(self.robot.motion.stop)
 
     async def restore_animal(self, path: str) -> None:
         await asyncio.sleep(1.5)
@@ -324,6 +342,7 @@ class RobotGame:
                 "expression.vector_accessory.v1",
                 "rtc.audio.full_duplex.v1",
                 "microphone",
+                "motion",
             )
             missing = [capability for capability in required if not self.robot.supports(capability)]
             if missing:
