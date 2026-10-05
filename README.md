@@ -63,16 +63,36 @@ LLM_EXTRA_BODY_JSON={"thinking":{"type":"enabled"},"reasoning_effort":"low"}
 
 更换服务时，将 `LLM_BASE_URL`、`LLM_API_KEY`、`LLM_MODEL_NAME` 改成目标服务的配置。接口需要支持 JSON 对象输出。`LLM_EXTRA_BODY_JSON` 默认是 `{}`，用于填写所选服务支持的可选参数，如思考模式、输出长度或服务等级。它不能覆盖模型、消息和响应格式。`LLM_TIMEOUT_SECONDS` 控制单次调用超时，默认 180 秒。
 
-本机 CLI 使用同一组变量，例如 Claude Code：
+使用本机 CLI 时，在启动游戏的电脑上安装对应 CLI，并在终端完成登录。
+将 `.env` 中同名的六项变量替换为下面的一组，语音和 Jev 配置继续保留。
+
+**Codex**：执行 `codex login` 登录，使用 `codex login status` 检查登录状态。
+
+```dotenv
+LLM_PROVIDER=codex
+LLM_API_KEY=
+LLM_BASE_URL=
+LLM_MODEL_NAME=
+LLM_EXTRA_BODY_JSON={}
+LLM_COMMAND=codex
+```
+
+**Claude Code**：执行 `claude auth login` 登录，使用 `claude auth status` 检查登录状态。
 
 ```dotenv
 LLM_PROVIDER=claude_code
+LLM_API_KEY=
+LLM_BASE_URL=
 LLM_MODEL_NAME=
-LLM_COMMAND=
 LLM_EXTRA_BODY_JSON={}
+LLM_COMMAND=claude
 ```
 
-使用 Codex 时将 `LLM_PROVIDER` 设置为 `codex`。CLI 需要已经登录（`claude auth status`、`codex login status`），无需 `LLM_API_KEY`。`LLM_MODEL_NAME` 留空时，闲聊和画图均使用 CLI 配置的默认模型；填写时均通过 `--model` 指定。Runtime 找不到命令时，把 `LLM_COMMAND` 写成绝对路径。
+`LLM_MODEL_NAME` 留空时，闲聊和画图均使用 CLI 默认模型；填写时通过 `--model` 指定。切换到 CLI 时，将接口模式下的模型名称清空，`LLM_EXTRA_BODY_JSON` 设为 `{}`。CLI 使用自己的登录凭据。
+
+`LLM_COMMAND` 只填写可执行文件名称或绝对路径，不包含 `exec`、`--print` 等参数，程序会自动添加。留空时按 provider 使用 `codex` 或 `claude`。如果启动游戏时找不到命令，macOS/Linux 可用 `command -v codex` 或 `command -v claude` 查询绝对路径，Windows PowerShell 可用 `(Get-Command codex).Source` 或 `(Get-Command claude).Source`，将结果填入 `LLM_COMMAND`。
+
+修改 `.env` 后重新启动游戏。`LLM_TIMEOUT_SECONDS` 同样控制 CLI 调用超时，可根据所用模型的耗时调整。
 
 生成失败或超时会直接报错，不会自动换 provider。每次生成的 JSON 和去重记录存在 `.artifacts/`，重启后仍然有效。
 
