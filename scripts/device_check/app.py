@@ -100,7 +100,7 @@ async def main() -> None:
                     }
                 )
                 if game.game.hint_index != 0 or game.game.attempts != 0:
-                    raise AssertionError("首次猜测前不能提供提示或消耗回答次数")
+                    raise AssertionError("题目准备完成时，提示和回答次数必须从零开始")
                 wrong_name = next(
                     name
                     for name in ("长颈鹿", "企鹅", "乌龟", "鳄鱼")

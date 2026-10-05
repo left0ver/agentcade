@@ -102,8 +102,6 @@ class Game:
         if self.resolved or animal is None:
             return Reply()
         if decision is Decision.HINT:
-            if self.attempts == 0:
-                return Reply("先看图猜一次吧，答错后我会给你提示。")
             return Reply(self.next_hint())
         if decision is Decision.CORRECT:
             self.score += 1

@@ -122,17 +122,20 @@ def test_hint_and_unclear_do_not_consume_attempts():
     assert game.attempts == game.score == 0
 
 
-def test_hints_and_wrong_answers_share_progress_without_repeating_clues():
+@pytest.mark.parametrize(
+    "decisions",
+    [(Decision.HINT, Decision.INCORRECT), (Decision.INCORRECT, Decision.HINT)],
+)
+def test_hints_and_wrong_answers_share_progress_without_repeating_clues(decisions):
     game = Game()
     start_question(game)
     hints = RECORDED[0].hints
-    before_guess = game.handle(Decision.HINT, game.revision)
-    assert all(hint not in before_guess.text for hint in hints)
-    assert game.hint_index == game.attempts == 0
-    first = game.handle(Decision.INCORRECT, game.revision)
-    assert first.text == "还没有答对。" + hints[0] + "。"
-    second = game.handle(Decision.HINT, game.revision)
-    assert second.text == hints[1] + "。"
+    for index, decision in enumerate(decisions):
+        reply = game.handle(decision, game.revision)
+        prefix = "还没有答对。" if decision is Decision.INCORRECT else ""
+        assert reply.text == prefix + hints[index] + "。"
+        assert game.hint_index == index + 1
+        assert game.attempts == decisions[:index + 1].count(Decision.INCORRECT)
     third = game.handle(Decision.HINT, game.revision)
     assert third.text == hints[2] + "。"
     for _ in range(2):
@@ -156,14 +159,14 @@ def test_hint_progress_resets_for_each_question_and_new_game():
     game.set_question(RECORDED[1])
     assert not game.handle(Decision.HINT, revision).text
     assert game.hint_index == game.attempts == 0
-    assert "先看图猜一次" in game.handle(Decision.HINT, game.revision).text
+    assert game.handle(Decision.HINT, game.revision).text == RECORDED[1].hints[0] + "。"
     reply = game.handle(Decision.INCORRECT, game.revision)
-    assert reply.text == "还没有答对。" + RECORDED[1].hints[0] + "。"
+    assert reply.text == "还没有答对。" + RECORDED[1].hints[1] + "。"
     game.handle(Decision.END, game.revision)
     start_question(game)
-    assert "先看图猜一次" in game.handle(Decision.HINT, game.revision).text
+    assert game.handle(Decision.HINT, game.revision).text == RECORDED[0].hints[0] + "。"
     reply = game.handle(Decision.INCORRECT, game.revision)
-    assert reply.text == "还没有答对。" + RECORDED[0].hints[0] + "。"
+    assert reply.text == "还没有答对。" + RECORDED[0].hints[1] + "。"
 
 
 def test_skip_moves_to_next_animal_without_score():
