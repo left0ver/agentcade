@@ -10,7 +10,7 @@ from guess_animal.audio_stream import CapturedPcm
 from guess_animal.config import LLMSettings, Settings
 from guess_animal.conversation import Conversation
 from guess_animal.game import Decision
-from guess_animal.generator import AnimalGenerator, GenerationHistory
+from guess_animal.generator import HISTORY_TTL_SECONDS, AnimalGenerator, GenerationHistory
 from guess_animal.judge import JevJudge
 from guess_animal.speech import QwenSpeech
 from tests.e2e.audio import asr_frames, write_wav
@@ -25,6 +25,7 @@ def test_provider_generates_distinct_questions_and_persists_history(provider, ru
         settings = settings_for_provider(provider)
         history_path = run_directory / "history.json"
         animals = []
+        started = time.time()
         # 重新创建生成器，检查第二次调用确实读取已经保存的生成历史。
         for _ in range(2):
             generator = AnimalGenerator(settings, history_path)
@@ -40,6 +41,8 @@ def test_provider_generates_distinct_questions_and_persists_history(provider, ru
         assert len(history.drawing_hashes) == 2
         assert first.name.casefold() in history.recent_names
         assert second.name.casefold() in history.recent_names
+        assert all(started <= entry.generated_at <= time.time() for entry in history.entries)
+        assert history.active(time.time() + HISTORY_TTL_SECONDS).entries == []
 
     asyncio.run(exercise())
 

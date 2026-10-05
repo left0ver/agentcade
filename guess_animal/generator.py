@@ -1,5 +1,6 @@
 import asyncio
 import hashlib
+import json
 import secrets
 import time
 import unicodedata
@@ -17,6 +18,7 @@ Coordinate = Annotated[int, Field(strict=True, ge=0, le=411)]
 Coordinates = Annotated[list[Coordinate], Field(min_length=2, max_length=2)]
 Name = Annotated[str, Field(min_length=1, max_length=24)]
 Hint = Annotated[str, Field(min_length=4, max_length=16, pattern=r"^它")]
+HISTORY_TTL_SECONDS = 3 * 24 * 60 * 60
 
 
 def normalize_name(value: str) -> str:
@@ -95,27 +97,96 @@ class GeneratedRound(BaseModel):
         return self
 
 
-class GenerationHistory(BaseModel):
+class LegacyGenerationHistory(BaseModel):
     model_config = ConfigDict(extra="forbid")
     recent_names: list[str] = Field(default_factory=list)
     drawing_hashes: list[str] = Field(default_factory=list)
 
-    def updated(self, animals: tuple[Animal, ...]) -> "GenerationHistory":
-        names = [
-            normalize_name(name) for animal in animals for name in (animal.name, *animal.aliases)
-        ]
-        if set(names) & set(self.recent_names):
-            raise ValueError("绘图 provider 返回了近期已经使用的动物")
-        hashes = [
-            hashlib.sha256(bytes.fromhex(encode_vector(animal.strokes))).hexdigest()
-            for animal in animals
-        ]
-        if set(hashes) & set(self.drawing_hashes):
-            raise ValueError("绘图 provider 返回了已经生成过的相同图案")
-        return GenerationHistory(
-            recent_names=(self.recent_names + names)[-80:],
-            drawing_hashes=self.drawing_hashes + hashes,
+
+class HistoryEntry(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    generated_at: float = Field(ge=0, allow_inf_nan=False)
+    names: list[str]
+    drawing_hash: str
+
+    @classmethod
+    def from_animal(cls, animal: Animal, generated_at: float) -> "HistoryEntry":
+        return cls(
+            generated_at=generated_at,
+            names=[normalize_name(name) for name in (animal.name, *animal.aliases)],
+            drawing_hash=hashlib.sha256(bytes.fromhex(encode_vector(animal.strokes))).hexdigest(),
         )
+
+
+class ArchivedAnimal(BaseModel):
+    # 从生成归档中读取动物名称和图案。
+    name: str
+    aliases: list[str]
+    strokes: list[GeneratedStroke]
+
+    def history_entry(self, generated_at: float) -> HistoryEntry:
+        strokes = tuple(
+            Stroke(tuple((x, y) for x, y in stroke.points), stroke.width)
+            for stroke in self.strokes
+        )
+        return HistoryEntry(
+            generated_at=generated_at,
+            names=[normalize_name(name) for name in (self.name, *self.aliases)],
+            drawing_hash=hashlib.sha256(bytes.fromhex(encode_vector(strokes))).hexdigest(),
+        )
+
+
+class GenerationHistory(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    entries: list[HistoryEntry] = Field(default_factory=list)
+
+    @property
+    def recent_names(self) -> list[str]:
+        return list(dict.fromkeys(name for entry in self.entries for name in entry.names))
+
+    @property
+    def drawing_hashes(self) -> list[str]:
+        return [entry.drawing_hash for entry in self.entries]
+
+    def active(self, now: float) -> "GenerationHistory":
+        return GenerationHistory(entries=[
+            entry for entry in self.entries if entry.generated_at > now - HISTORY_TTL_SECONDS
+        ])
+
+    @classmethod
+    def load(cls, path: Path) -> "GenerationHistory":
+        if not path.exists():
+            return cls()
+        data = json.loads(path.read_text(encoding="utf-8"))
+        if "entries" in data:
+            return cls.model_validate(data)
+        legacy = LegacyGenerationHistory.model_validate(data)
+        entries = []
+        for archive in sorted((path.parent / "generated").glob("*.json")):
+            generated_at = int(archive.stem) / 1_000_000_000
+            archived = json.loads(archive.read_text(encoding="utf-8"))
+            for item in archived["animals"]:
+                entry = ArchivedAnimal.model_validate(item).history_entry(generated_at)
+                if entry.drawing_hash in legacy.drawing_hashes:
+                    entries.append(entry)
+        history = cls(entries=entries)
+        if (set(legacy.drawing_hashes) - set(history.drawing_hashes)
+                or set(legacy.recent_names) - set(history.recent_names)):
+            raise ValueError("出题历史缺少生成时间，请恢复同目录 generated 中的原始归档")
+        return history
+
+    def updated(
+        self, animals: tuple[Animal, ...], *, now: float | None = None,
+    ) -> "GenerationHistory":
+        generated_at = time.time() if now is None else now
+        history = self.active(generated_at)
+        entries = [HistoryEntry.from_animal(animal, generated_at) for animal in animals]
+        names = {name for entry in entries for name in entry.names}
+        if names & set(history.recent_names):
+            raise ValueError("绘图 provider 返回了近期已经使用的动物")
+        if {entry.drawing_hash for entry in entries} & set(history.drawing_hashes):
+            raise ValueError("绘图 provider 返回了最近三天生成过的相同图案")
+        return GenerationHistory(entries=history.entries + entries)
 
 
 SYSTEM_PROMPT = """你为桌面机器人的中文猜动物游戏设计题目及原创简笔画。
@@ -163,17 +234,14 @@ class AnimalGenerator:
     def __init__(self, settings: Settings, history_path: Path | None = None):
         self.provider = create_provider(settings)
         self.history_path = history_path or ROOT / ".artifacts" / "generation_history.json"
-        self.history = (
-            GenerationHistory.model_validate_json(self.history_path.read_text(encoding="utf-8"))
-            if self.history_path.exists()
-            else GenerationHistory()
-        )
+        self.history = GenerationHistory.load(self.history_path)
         self.lock = asyncio.Lock()
 
     async def generate(self, count: int = 1) -> tuple[Animal, ...]:
         if not 1 <= count <= 10:
             raise ValueError("每次生成必须包含一至十种动物")
         async with self.lock:
+            self.history = self.history.active(time.time())
             prompt = {
                 "animal_count": count,
                 "exclude_names": self.history.recent_names,
@@ -186,7 +254,7 @@ class AnimalGenerator:
                         "完整全身，头部好奇地转向一侧，肢体和尾部自然舒展",
                     )
                 ),
-                "instruction": "请生成指定数量的全新动物全身图案题目，避开近期动物及其同义名称。",
+                "instruction": "请生成指定数量的动物全身图案题目，避开最近三天的动物及其同义名称。",
             }
             output = await self.provider.generate(
                 SYSTEM_PROMPT, prompt, GeneratedRound.model_json_schema()
