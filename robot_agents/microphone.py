@@ -4,7 +4,7 @@ from collections.abc import AsyncIterator
 
 from watcherobot.media import AudioFormat
 
-from guess_animal.audio_stream import CapturedPcm, rtc_command
+from robot_agents.audio_stream import CapturedPcm, sdk_command
 
 
 class MicrophoneInput:
@@ -57,7 +57,7 @@ class MicrophoneInput:
                     raise ValueError("麦克风需要提供 16 kHz、单声道、16-bit PCM")
                 self.opened.set()
                 while self.enabled.is_set():
-                    frame = await rtc_command(session.read, timeout=2)
+                    frame = await sdk_command(session.read, timeout=2)
                     if session.dropped_frames or session.decode_failures:
                         raise RuntimeError("麦克风音频丢失或解码失败")
                     self.received_pcm_bytes += len(frame.data)
@@ -69,7 +69,7 @@ class MicrophoneInput:
                 self.opened.clear()
                 try:
                     if session is not None:
-                        await rtc_command(session.close)
+                        await sdk_command(session.close)
                 finally:
                     self.released.set()
 

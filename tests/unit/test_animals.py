@@ -1,6 +1,6 @@
 import pytest
 
-from guess_animal.animals import Stroke, encode_vector
+from robot_agents.vector import Stroke, encode_vector
 from tests.samples import recorded_animals
 
 

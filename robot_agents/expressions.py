@@ -5,8 +5,8 @@ from typing import Literal
 from shapely import LineString, Polygon
 from svgelements import SVG, Circle, Close, Color, Line, Move, Path, Rect, Shape
 
-from guess_animal.animals import Point, Stroke, encode_vector
-from guess_animal.config import ROOT
+from robot_agents.config import ROOT
+from robot_agents.vector import Point, Stroke, encode_vector
 
 ExpressionCode = Literal["009", "111", "141"]
 EXPRESSION_FILES = {
@@ -19,7 +19,7 @@ WHITE = Color("white")
 
 @lru_cache(maxsize=3)
 def _shapes(code: ExpressionCode) -> tuple[Shape, ...]:
-    source = ROOT / "emojis" / EXPRESSION_FILES[code]
+    source = ROOT / "robot_agents" / "assets" / "emojis" / EXPRESSION_FILES[code]
     svg = SVG.parse(str(source))
     if svg.width != 412 or svg.height != 412:
         raise ValueError("表情 SVG 必须使用 412×412 画布")
@@ -105,6 +105,32 @@ def expression_strokes(code: ExpressionCode, progress: int = 0) -> tuple[Stroke,
 
 def expression_vector(code: ExpressionCode, progress: int = 0) -> str:
     return encode_vector(expression_strokes(code, progress))
+
+
+@lru_cache(maxsize=11)
+def segmented_progress_strokes(step: int) -> tuple[Stroke, ...]:
+    if type(step) is not int or not 0 <= step <= 10:
+        raise ValueError("进度格数必须是 0 到 10 的整数")
+    strokes = list(expression_strokes("111", 0))
+    # 填充线沿外框底边连接，每组最多三格，符合 SDK 的笔画和坐标限制。
+    for first in range(0, step, 3):
+        points = []
+        for index in range(first, min(first + 3, step)):
+            left = 139 + index * 14
+            right = left + 7
+            points.append((left, 101))
+            for row, y in enumerate(range(88, 97, 2)):
+                points.extend(((left, y), (right, y)) if row % 2 == 0
+                              else ((right, y), (left, y)))
+            points.append((right, 101))
+        strokes.append(Stroke(tuple(points), 2))
+    result = tuple(strokes)
+    encode_vector(result)
+    return result
+
+
+def segmented_progress_vector(step: int) -> str:
+    return encode_vector(segmented_progress_strokes(step))
 
 
 def generation_progress(elapsed: float, estimate: float) -> int:

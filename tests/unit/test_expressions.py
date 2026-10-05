@@ -1,28 +1,30 @@
 import math
 
 import pytest
-from shapely import LineString, Polygon, unary_union
+from shapely import LineString, Point, Polygon, unary_union
 from svgelements import SVG, Color, Path, Shape
 from watcherobot.distribution.source_files import collect_application_source_files
 
-from guess_animal.config import ROOT
-from guess_animal.expressions import (
+from robot_agents.config import ROOT
+from robot_agents.expressions import (
     EXPRESSION_FILES,
     expression_strokes,
     expression_vector,
     generation_progress,
+    segmented_progress_strokes,
+    segmented_progress_vector,
 )
 
 
 @pytest.mark.parametrize("code", EXPRESSION_FILES)
 def test_expression_assets_are_included_in_application(code):
-    source = ROOT / "emojis" / EXPRESSION_FILES[code]
+    source = ROOT / "robot_agents" / "assets" / "emojis" / EXPRESSION_FILES[code]
     assert source.relative_to(ROOT) in collect_application_source_files(ROOT)
 
 
 @pytest.mark.parametrize("code,progress", [("009", 0), ("111", 62), ("141", 0)])
 def test_vector_geometry_preserves_svg_strokes_and_filled_regions(code, progress):
-    svg = SVG.parse(str(ROOT / "emojis" / EXPRESSION_FILES[code]))
+    svg = SVG.parse(str(ROOT / "robot_agents" / "assets" / "emojis" / EXPRESSION_FILES[code]))
     regions = []
     for shape in svg.elements():
         if not isinstance(shape, Shape):
@@ -69,3 +71,24 @@ def test_progress_is_monotonic_and_stays_incomplete_until_generation_finishes():
 def test_invalid_generation_timing_fails(elapsed, estimate):
     with pytest.raises(ValueError):
         generation_progress(elapsed, estimate)
+
+
+def test_segmented_progress_keeps_gaps_and_preserves_face():
+    frames = [segmented_progress_strokes(step) for step in range(11)]
+    for step, strokes in enumerate(frames):
+        assert strokes[:4] == expression_strokes("111", 0)
+        assert len(strokes) <= 12
+        assert sum(len(stroke.points) for stroke in strokes) <= 192
+        filled = unary_union([LineString(stroke.points).buffer(stroke.width / 2)
+                              for stroke in strokes])
+        for index in range(10):
+            assert filled.covers(Point(142 + index * 14, 92)) == (index < step)
+        for index in range(9):
+            assert not filled.covers(Point(150 + index * 14, 92))
+    assert len({segmented_progress_vector(step) for step in range(11)}) == 11
+
+
+@pytest.mark.parametrize("step", [-1, 11, 1.5, True])
+def test_segmented_progress_rejects_invalid_steps(step):
+    with pytest.raises(ValueError):
+        segmented_progress_vector(step)

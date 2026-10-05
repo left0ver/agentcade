@@ -10,9 +10,10 @@ from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from guess_animal.animals import Animal, Stroke, encode_vector
-from guess_animal.config import ROOT, Settings
-from guess_animal.providers import create_provider
+from games.guess_animal.animals import Animal
+from robot_agents.config import ROOT, Settings
+from robot_agents.providers import create_provider
+from robot_agents.vector import Stroke, encode_vector
 
 Coordinate = Annotated[int, Field(strict=True, ge=0, le=411)]
 Coordinates = Annotated[list[Coordinate], Field(min_length=2, max_length=2)]

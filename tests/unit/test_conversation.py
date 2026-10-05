@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from guess_animal.conversation import ConversationReply
+from robot_agents.conversation import ConversationReply
 
 
 @pytest.mark.parametrize("reply", ["", "  ", "回答" * 251])

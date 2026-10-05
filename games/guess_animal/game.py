@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Literal
 
-from guess_animal.animals import Animal
+from games.guess_animal.animals import Animal
 
 
 class Decision(str, Enum):

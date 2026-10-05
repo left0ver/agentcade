@@ -2,8 +2,8 @@ import asyncio
 
 from watcherobot.application import ApplicationContext
 
-from guess_animal.config import Settings
-from guess_animal.robot_game import run_application
+from robot_agents.application import run_application
+from robot_agents.config import Settings
 
 
 async def main() -> None:

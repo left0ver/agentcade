@@ -4,7 +4,7 @@ from dataclasses import replace
 import pytest
 from pydantic import ValidationError
 
-from guess_animal.generator import GeneratedRound, GenerationHistory
+from games.guess_animal.generator import GeneratedRound, GenerationHistory
 from tests.samples import recorded_animals, recorded_round
 
 THREE_DAYS_SECONDS = 72 * 60 * 60

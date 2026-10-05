@@ -9,8 +9,8 @@ from uuid import uuid4
 from watcherobot.audio import MAX_AUDIO_BYTES, PCMAudio
 from websockets.asyncio.client import ClientConnection, connect
 
-from guess_animal.audio_stream import CapturedPcm
-from guess_animal.config import Settings
+from robot_agents.audio_stream import CapturedPcm
+from robot_agents.config import Settings
 
 
 @dataclass(frozen=True)

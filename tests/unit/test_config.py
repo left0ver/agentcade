@@ -1,6 +1,6 @@
 import pytest
 
-from guess_animal.config import LLMSettings
+from robot_agents.config import LLMSettings
 
 
 @pytest.mark.parametrize("provider", ["claude_code", "codex"])

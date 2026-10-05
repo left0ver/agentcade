@@ -1,6 +1,6 @@
 import pytest
 
-from guess_animal.game import Decision, Game
+from games.guess_animal.game import Decision, Game
 from tests.samples import recorded_animals
 
 RECORDED = recorded_animals()

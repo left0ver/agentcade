@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from guess_animal.generator import GeneratedRound
+from games.guess_animal.generator import GeneratedRound
 
 
 def recorded_round() -> dict:

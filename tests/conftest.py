@@ -3,7 +3,7 @@ from uuid import uuid4
 
 import pytest
 
-from guess_animal.config import ROOT
+from robot_agents.config import ROOT
 
 
 @pytest.fixture

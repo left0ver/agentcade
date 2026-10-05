@@ -12,7 +12,7 @@ from uuid import uuid4
 from openai import AsyncOpenAI
 from pydantic import BaseModel
 
-from guess_animal.config import ROOT, Settings
+from robot_agents.config import ROOT, Settings
 
 
 class LLMProvider(Protocol):

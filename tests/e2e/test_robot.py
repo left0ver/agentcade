@@ -7,7 +7,7 @@ import sys
 
 import pytest
 
-from guess_animal.config import ROOT, Settings
+from robot_agents.config import ROOT, Settings
 
 pytestmark = [pytest.mark.e2e, pytest.mark.robot]
 
@@ -19,9 +19,23 @@ def test_complete_voice_game_on_connected_robot(run_directory):
     assert len(report["checks"]) == 12, report["checks"]
 
 
-def test_expression_progress_during_streaming_audio(run_directory):
+def test_pcm_playback_cancellation_and_microphone_recovery(run_directory):
+    report = run_robot(run_directory, "audio")
+    assert report["checks"] == ["取消、再次播放和麦克风释放"]
+    assert not report["rtc_events"]
+
+
+def test_complete_number_game_on_connected_robot(run_directory):
+    report = run_robot(run_directory, "number")
+    assert report["number_won"]
+    assert 1 <= len(report["number_guesses"]) <= 5
+    assert len(report["checks"]) == 4, report["checks"]
+
+
+def test_expression_progress_during_audio_playback(run_directory):
     report = run_robot(run_directory, "expressions")
-    assert report["progress"] == list(range(101))
+    assert report["progress_cycles"] == [list(range(11))] * 3
+    assert report["progress_cancelled"]
 
 
 def test_answer_feedback_moves_head_with_speech(run_directory):
@@ -60,4 +74,5 @@ def run_robot(run_directory, scenario):
     assert report["run_id"] == request["run_id"]
     assert report["complete"], report
     assert not report["rtc_active_after_shutdown"]
+    assert not report["rtc_events"]
     return report

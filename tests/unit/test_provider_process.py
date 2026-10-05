@@ -6,8 +6,8 @@ from tempfile import TemporaryDirectory
 
 import pytest
 
-from guess_animal.config import ROOT
-from guess_animal.providers import run_cli
+from robot_agents.config import ROOT
+from robot_agents.providers import run_cli
 
 
 @pytest.fixture

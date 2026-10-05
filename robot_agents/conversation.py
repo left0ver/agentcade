@@ -1,24 +1,12 @@
 from collections import deque
-from dataclasses import dataclass
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from guess_animal.animals import Animal
-from guess_animal.config import Settings
-from guess_animal.providers import create_provider
-
-
-@dataclass(frozen=True)
-class ConversationState:
-    changed_at: float
-    revision: int
-    animal: Animal | None
-    active: bool
-    phase: str
-
+from robot_agents.config import Settings
+from robot_agents.providers import create_provider
 
 SYSTEM_PROMPT = (
-    "你是陪用户玩猜动物游戏的桌面机器人，也可以自然聊天、回答知识问题。"
+    "你是可以自然聊天、回答知识问题的桌面机器人。"
     "使用简短自然的中文，回答保持一到三句话、120字以内，适合直接语音播报。"
     "延续已有聊天上下文。不要使用 Markdown。"
     "游戏控制、正确答案、计分与提示由游戏程序负责，你不能代替程序执行，"

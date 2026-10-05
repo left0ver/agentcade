@@ -5,14 +5,15 @@ from dataclasses import replace
 
 import pytest
 
-from guess_animal.animals import COMMAND_HOTWORDS, encode_vector
-from guess_animal.audio_stream import CapturedPcm
-from guess_animal.config import LLMSettings, Settings
-from guess_animal.conversation import Conversation
-from guess_animal.game import Decision
-from guess_animal.generator import HISTORY_TTL_SECONDS, AnimalGenerator, GenerationHistory
-from guess_animal.judge import JevJudge
-from guess_animal.speech import QwenSpeech
+from games.guess_animal.animals import COMMAND_HOTWORDS
+from games.guess_animal.game import Decision
+from games.guess_animal.generator import HISTORY_TTL_SECONDS, AnimalGenerator, GenerationHistory
+from games.guess_animal.judge import JevJudge
+from robot_agents.audio_stream import CapturedPcm
+from robot_agents.config import LLMSettings, Settings
+from robot_agents.conversation import Conversation
+from robot_agents.speech import QwenSpeech
+from robot_agents.vector import encode_vector
 from tests.e2e.audio import asr_frames, write_wav
 from tests.samples import recorded_animals
 

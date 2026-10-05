@@ -1,11 +1,13 @@
 {
   "schema_version": 2,
   "id": "local.desktop_robot",
-  "name": "你画我猜",
+  "name": "桌面机器人",
   "version": "0.1.0",
   "requires_watcherobot": ">=0.1.10,<0.2",
   "dependencies": [
-    "aiortc>=1.14,<2",
+    "a2a-sdk[http-server]>=1.2.2,<2",
+    "httpx>=0.28,<1",
+    "uvicorn>=0.35,<1",
     "av>=14,<17",
     "openai>=2,<3",
     "pydantic>=2,<3",
@@ -19,7 +21,7 @@
     "windows",
     "macos"
   ],
-  "description": "看机器人画动物，通过语音回答、获取提示和切换题目。",
+  "description": "与机器人聊天，选择你画我猜或猜数字，通过 A2A 接入更多游戏。",
   "author": "Local Developer",
   "icon": "icon.svg"
 }
