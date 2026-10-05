@@ -5,6 +5,8 @@
   "version": "0.1.0",
   "requires_watcherobot": ">=0.1.10,<0.2",
   "dependencies": [
+    "aiortc>=1.14,<2",
+    "av>=14,<17",
     "openai>=2,<3",
     "pydantic>=2,<3",
     "shapely>=2.1,<3",

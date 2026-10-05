@@ -1,0 +1,11 @@
+{
+  "schema_version": 2,
+  "id": "local.desktop_robot_stream_check",
+  "name": "流式语音真机检查",
+  "version": "0.1.0",
+  "requires_watcherobot": ">=0.1.10,<0.2",
+  "dependencies": ["aiortc>=1.14,<2", "av>=14,<17", "python-dotenv>=1.1,<2", "websockets>=15,<16"],
+  "supported_host_platforms": ["windows", "macos"],
+  "description": "验证真实 Qwen TTS 的连续播放、取消与麦克风恢复。",
+  "author": "Local Developer"
+}

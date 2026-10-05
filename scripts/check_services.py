@@ -52,8 +52,8 @@ async def check_judge(settings: Settings) -> dict:
     alias = first.aliases[0] if first.aliases else first.name
     cases = (
         ("我们来玩你画我猜", None, Decision.START),
-        ("今天的天气怎么样", None, Decision.IGNORE),
-        ("我不想玩你画我猜", None, Decision.IGNORE),
+        ("今天的天气怎么样", None, Decision.CHAT),
+        ("我不想玩你画我猜", None, Decision.END),
         (f"我猜是{alias}", first, Decision.CORRECT),
         (f"应该是{second.name}", first, Decision.INCORRECT),
         (f"{first.name}或者{second.name}", first, Decision.UNCLEAR),

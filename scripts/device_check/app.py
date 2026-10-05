@@ -3,6 +3,7 @@ import json
 import sys
 import time
 from array import array
+from collections.abc import AsyncIterator
 from contextlib import aclosing
 from pathlib import Path
 
@@ -11,6 +12,7 @@ from watcherobot.application import ApplicationContext
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from guess_animal.animals import encode_vector
+from guess_animal.audio_stream import PlaybackCallback
 from guess_animal.config import ROOT, Settings
 from guess_animal.expressions import expression_vector
 from guess_animal.game import Decision, Game
@@ -30,9 +32,20 @@ class CheckedRobotGame(RobotGame):
         self.displayed.append(path)
         self.display_times.append(time.monotonic())
 
-    async def play_audio(self, pcm: bytes) -> None:
-        started = time.monotonic()
-        await super().play_audio(pcm)
+    async def play_audio(
+        self, chunks: AsyncIterator[bytes], *, on_start: PlaybackCallback | None = None
+    ) -> None:
+        started = None
+
+        async def record_start() -> None:
+            nonlocal started
+            if on_start is not None:
+                await on_start()
+            started = time.monotonic()
+
+        await super().play_audio(chunks, on_start=record_start)
+        if started is None:
+            raise AssertionError("语音没有开始播放")
         self.playback_times.append((started, time.monotonic()))
 
 
@@ -179,6 +192,7 @@ async def main() -> None:
                     await game.generator.close()
                 finally:
                     await game.judge.close()
+                    await game.conversation.close()
                     (output / "device_check.json").write_text(
                         json.dumps(report, ensure_ascii=False, indent=2),
                         encoding="utf-8",

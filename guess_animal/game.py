@@ -14,6 +14,7 @@ class Decision(str, Enum):
     INCORRECT = "incorrect"
     UNCLEAR = "unclear"
     IGNORE = "ignore"
+    CHAT = "chat"
 
 
 @dataclass(frozen=True)
@@ -85,6 +86,8 @@ class Game:
         if revision != self.revision:
             return Reply()
         self.silence_count = 0
+        if decision in {Decision.CHAT, Decision.IGNORE}:
+            return Reply()
         if decision is Decision.START:
             return self.start()
         if not self.active:

@@ -20,6 +20,38 @@ def start_question(game):
     game.set_question(RECORDED[0])
 
 
+def test_chat_preserves_question_and_attempts():
+    game = Game()
+    start_question(game)
+    revision = game.revision
+    animal = game.animal
+    reply = game.handle(Decision.CHAT, revision)
+    assert not reply.text and not reply.advance and not reply.prepare
+    assert game.animal is animal
+    assert game.attempts == game.score == game.hint_index == 0
+    assert game.revision == revision
+
+
+def test_end_is_available_while_preparing_question():
+    game = Game()
+    game.start()
+    reply = game.handle(Decision.END, game.revision)
+    assert not game.active and reply.clear
+    assert game.animal is None
+
+
+def test_answer_from_previous_question_does_not_consume_next_attempt():
+    game = Game()
+    start_question(game)
+    previous_revision = game.revision
+    game.handle(Decision.CORRECT, previous_revision)
+    game.advance()
+    game.set_question(RECORDED[1])
+    reply = game.handle(Decision.INCORRECT, previous_revision)
+    assert not reply.text
+    assert game.attempts == 0 and game.score == 1
+
+
 def test_start_waits_for_one_question():
     game = Game()
     reply = game.start()

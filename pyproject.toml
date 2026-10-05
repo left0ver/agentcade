@@ -8,6 +8,8 @@ authors = [
 ]
 requires-python = ">=3.11"
 dependencies = [
+    "aiortc>=1.14,<2",
+    "av>=14,<17",
     "openai>=2,<3",
     "pydantic>=2,<3",
     "shapely>=2.1,<3",

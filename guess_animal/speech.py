@@ -1,14 +1,22 @@
 import asyncio
 import json
-from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from collections import deque
+from collections.abc import AsyncIterator, Callable
+from contextlib import aclosing, asynccontextmanager
 from dataclasses import dataclass
 from uuid import uuid4
 
 from watcherobot.audio import MAX_AUDIO_BYTES, PCMAudio
 from websockets.asyncio.client import ClientConnection, connect
 
+from guess_animal.audio_stream import CapturedPcm
 from guess_animal.config import Settings
+
+
+@dataclass(frozen=True)
+class RecognizedSpeech:
+    text: str
+    started_at: float
 
 
 @dataclass
@@ -50,7 +58,7 @@ class QwenSpeech:
             self.settings.websocket_url,
             additional_headers={"Authorization": f"Bearer {self.settings.dashscope_api_key}"},
             open_timeout=10,
-            close_timeout=3,
+            close_timeout=0.5,
             max_size=MAX_AUDIO_BYTES,
         ) as socket:
             task = AudioTask(socket, str(uuid4()))
@@ -72,6 +80,13 @@ class QwenSpeech:
             yield task
 
     async def synthesize(self, text: str) -> bytes:
+        audio = bytearray()
+        async with aclosing(self.synthesize_stream(text)) as chunks:
+            async for chunk in chunks:
+                audio.extend(chunk)
+        return bytes(audio)
+
+    async def synthesize_stream(self, text: str) -> AsyncIterator[bytes]:
         if not text.strip() or len(text) > 500:
             raise ValueError("每次语音反馈必须包含 1 至 500 个字符")
         parameters = {
@@ -87,15 +102,24 @@ class QwenSpeech:
             async with self.task("tts", self.settings.tts_model, parameters) as task:
                 await task.send("continue-task", {"input": {"text": text}})
                 await task.send("finish-task", {"input": {}})
-                audio = bytearray()
+                total_bytes = 0
+                pending = bytearray()
                 while True:
                     event = await task.receive()
                     if isinstance(event, bytes):
-                        audio.extend(event)
-                        if len(audio) > MAX_AUDIO_BYTES:
+                        total_bytes += len(event)
+                        if total_bytes > MAX_AUDIO_BYTES:
                             raise ValueError("合成音频超过机器人单次播放容量")
+                        pending.extend(event)
+                        complete_bytes = len(pending) // 2 * 2
+                        if complete_bytes:
+                            chunk = bytes(pending[:complete_bytes])
+                            del pending[:complete_bytes]
+                            yield PCMAudio(chunk).data
                     elif event["header"]["event"] == "task-finished":
-                        return PCMAudio(bytes(audio)).data
+                        if not total_bytes or pending:
+                            raise ValueError("合成音频为空或包含不完整的 PCM 采样")
+                        return
 
     async def recognize(
         self,
@@ -155,3 +179,79 @@ class QwenSpeech:
                     group.create_task(send_audio())
                     group.create_task(receive_text())
                 return text
+
+    async def transcribe(
+        self,
+        audio: AsyncIterator[CapturedPcm],
+        on_result: Callable[[RecognizedSpeech], None],
+        *,
+        on_activity: Callable[[], None],
+        ready: asyncio.Event,
+        hotwords: tuple[str, ...] = (),
+    ) -> None:
+        parameters = {
+            "format": "pcm", "sample_rate": 16000, "language_hints": ["zh"],
+            "vad_model": "far_field_meeting_16k", "semantic_punctuation_enabled": False,
+            "max_sentence_silence": 800, "heartbeat": True,
+            "vocabulary": dict.fromkeys(hotwords, 2),
+        }
+        timeline: deque[tuple[float, float, bool]] = deque(maxlen=30000)
+        sent_samples = 0
+        input_finished = False
+        async with self.task("asr", self.settings.asr_model, parameters) as task:
+            ready.set()
+
+            async def send_audio() -> None:
+                nonlocal sent_samples, input_finished
+                async for frame in audio:
+                    if not frame.data or len(frame.data) % 2:
+                        raise ValueError("ASR 输入必须包含完整的 PCM 采样")
+                    timeline.append((sent_samples / 16, frame.captured_at, frame.muted))
+                    sent_samples += len(frame.data) // 2
+                    async with asyncio.timeout(10):
+                        await task.socket.send(frame.data)
+                input_finished = True
+                await task.send("finish-task", {"input": {}})
+
+            async def receive_text() -> None:
+                last_sentence = 0
+                while True:
+                    async with asyncio.timeout(30):
+                        event = await task.receive()
+                    if isinstance(event, bytes):
+                        raise TypeError("ASR 返回了非预期的音频数据")
+                    kind = event["header"]["event"]
+                    if kind == "task-finished":
+                        if not input_finished:
+                            raise RuntimeError("持续 ASR 在音频输入结束前终止")
+                        return
+                    if kind != "result-generated":
+                        continue
+                    sentence = event["payload"]["output"]["sentence"]
+                    if sentence.get("heartbeat"):
+                        continue
+                    on_activity()
+                    if not sentence.get("sentence_end"):
+                        continue
+                    sentence_id = sentence["sentence_id"]
+                    if sentence_id <= last_sentence:
+                        continue
+                    last_sentence = sentence_id
+                    text = sentence["text"].strip()
+                    if not text:
+                        continue
+                    begin = sentence["begin_time"]
+                    if not timeline or begin < timeline[0][0]:
+                        raise RuntimeError("ASR 句子时间超出保留的音频记录")
+                    offset, captured_at, muted = next(
+                        item for item in reversed(timeline) if item[0] <= begin
+                    )
+                    if muted or any(
+                        item[2] for item in timeline if begin <= item[0] < sentence["end_time"]
+                    ):
+                        continue
+                    on_result(RecognizedSpeech(text, captured_at + (begin - offset) / 1000))
+
+            async with asyncio.TaskGroup() as group:
+                group.create_task(send_audio())
+                group.create_task(receive_text())
