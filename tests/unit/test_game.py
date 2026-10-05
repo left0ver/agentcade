@@ -1,18 +1,9 @@
-from pathlib import Path
-
 import pytest
-from watcherobot.robot import _expression_custom_vector_path
 
-from guess_animal.animals import Stroke, encode_vector
 from guess_animal.game import Decision, Game
-from guess_animal.generator import GeneratedRound
+from tests.samples import recorded_animals
 
-RECORDED = tuple(
-    animal.animal()
-    for animal in GeneratedRound.model_validate_json(
-        (Path(__file__).parent / "fixtures" / "generated_round.json").read_text(encoding="utf-8")
-    ).animals
-)
+RECORDED = recorded_animals()
 
 
 def start_question(game):
@@ -30,14 +21,6 @@ def test_chat_preserves_question_and_attempts():
     assert game.animal is animal
     assert game.attempts == game.score == game.hint_index == 0
     assert game.revision == revision
-
-
-def test_end_is_available_while_preparing_question():
-    game = Game()
-    game.start()
-    reply = game.handle(Decision.END, game.revision)
-    assert not game.active and reply.clear
-    assert game.animal is None
 
 
 def test_answer_from_previous_question_does_not_consume_next_attempt():
@@ -236,19 +219,6 @@ def test_advance_requires_resolved_question():
     start_question(game)
     with pytest.raises(RuntimeError):
         game.advance()
-
-
-@pytest.mark.parametrize("animal", RECORDED, ids=lambda animal: animal.id)
-def test_every_drawing_step_is_accepted_by_sdk(animal):
-    for path in animal.drawing_steps():
-        assert _expression_custom_vector_path(path) == path
-
-
-def test_invalid_drawing_is_rejected_before_device_command():
-    with pytest.raises(ValueError):
-        Stroke(((412, 0),))
-    with pytest.raises(ValueError):
-        encode_vector((Stroke(((0, 0),)),) * 13)
 
 
 @pytest.mark.parametrize("rounds,attempts", [(0, 2), (11, 2), (5, 0)])

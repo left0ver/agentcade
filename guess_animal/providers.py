@@ -15,7 +15,7 @@ from pydantic import BaseModel
 from guess_animal.config import ROOT, Settings
 
 
-class DrawingProvider(Protocol):
+class LLMProvider(Protocol):
     async def generate(self, system: str, request: dict, schema: dict) -> str: ...
 
     async def close(self) -> None: ...
@@ -31,13 +31,14 @@ def format_system_prompt(system: str, schema: dict) -> str:
     )
 
 
-class DeepSeekProvider:
+class OpenAIProvider:
     def __init__(self, settings: Settings):
-        self.model = settings.deepseek_model
-        self.timeout = settings.drawing_timeout_seconds
+        self.model = settings.llm.model_name
+        self.timeout = settings.llm.timeout_seconds
+        self.extra_body = settings.llm.extra_body
         self.client = AsyncOpenAI(
-            api_key=settings.deepseek_api_key,
-            base_url=settings.deepseek_base_url,
+            api_key=settings.llm.api_key,
+            base_url=settings.llm.base_url,
             timeout=self.timeout,
             max_retries=0,
         )
@@ -51,13 +52,11 @@ class DeepSeekProvider:
                     {"role": "user", "content": json.dumps(request, ensure_ascii=False)},
                 ],
                 response_format={"type": "json_object"},
-                extra_body={"thinking": {"type": "enabled"}},
-                reasoning_effort="low",
-                max_tokens=32768,
+                extra_body=self.extra_body,
             )
         choice = result.choices[0]
         if choice.finish_reason != "stop" or not choice.message.content:
-            raise RuntimeError(f"DeepSeek 未返回完整的动物题目，结束原因：{choice.finish_reason}")
+            raise RuntimeError(f"LLM 未返回完整内容，结束原因：{choice.finish_reason}")
         return choice.message.content
 
     async def close(self) -> None:
@@ -66,7 +65,7 @@ class DeepSeekProvider:
 
 async def run_cli(command: list[str], prompt: str, directory: Path, timeout: int) -> str:
     environment = os.environ.copy()
-    for key in ("DASHSCOPE_API_KEY", "TYPESAFE_API_KEY", "DEEPSEEK_API_KEY"):
+    for key in ("DASHSCOPE_API_KEY", "TYPESAFE_API_KEY", "LLM_API_KEY"):
         environment.pop(key, None)
     temporary = directory / "temporary"
     temporary.mkdir()
@@ -97,7 +96,7 @@ async def run_cli(command: list[str], prompt: str, directory: Path, timeout: int
                 await process.wait()
     if process.returncode != 0:
         raise RuntimeError(
-            f"绘图工具退出码为 {process.returncode}，调用日志：{stdout_path}、{stderr_path}"
+            f"LLM 工具退出码为 {process.returncode}，调用日志：{stdout_path}、{stderr_path}"
         )
     return stdout_path.read_text(encoding="utf-8")
 
@@ -125,13 +124,13 @@ def codex_server_overrides() -> list[str]:
 
 class LocalCLIProvider:
     def __init__(self, settings: Settings):
-        self.name = settings.drawing_provider
-        command = getattr(settings, f"{self.name}_command")
+        self.name = settings.llm.provider
+        command = settings.llm.command or {"claude_code": "claude", "codex": "codex"}[self.name]
         self.command = shutil.which(command)
         if self.command is None:
-            raise FileNotFoundError(f"找不到 {self.name} 绘图命令：{command}")
-        self.model = getattr(settings, f"{self.name}_model")
-        self.timeout = settings.drawing_timeout_seconds
+            raise FileNotFoundError(f"找不到 {self.name} 命令：{command}")
+        self.model = settings.llm.model_name
+        self.timeout = settings.llm.timeout_seconds
 
     async def generate(self, system: str, request: dict, schema: dict) -> str:
         directory = ROOT / ".artifacts" / "provider_runs" / self.name / uuid4().hex
@@ -167,7 +166,7 @@ class LocalCLIProvider:
             output = await run_cli(command, prompt, directory, self.timeout)
             result = ClaudeResult.model_validate_json(output)
             if result.is_error or result.subtype != "success" or result.structured_output is None:
-                raise RuntimeError(f"Claude Code 未返回完整图案，调用日志：{directory}")
+                raise RuntimeError(f"Claude Code 未返回完整内容，调用日志：{directory}")
             return json.dumps(result.structured_output, ensure_ascii=False)
         output_path = directory / "result.json"
         command = [
@@ -207,7 +206,7 @@ class LocalCLIProvider:
         pass
 
 
-def create_provider(settings: Settings) -> DrawingProvider:
-    if settings.drawing_provider == "deepseek":
-        return DeepSeekProvider(settings)
+def create_provider(settings: Settings) -> LLMProvider:
+    if settings.llm.provider == "openai":
+        return OpenAIProvider(settings)
     return LocalCLIProvider(settings)

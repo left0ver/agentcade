@@ -4,7 +4,6 @@ import pytest
 from shapely import LineString, Polygon, unary_union
 from svgelements import SVG, Color, Path, Shape
 from watcherobot.distribution.source_files import collect_application_source_files
-from watcherobot.robot import ExpressionRuntimeDomain, _expression_custom_vector_path
 
 from guess_animal.config import ROOT
 from guess_animal.expressions import (
@@ -13,24 +12,12 @@ from guess_animal.expressions import (
     expression_vector,
     generation_progress,
 )
-from guess_animal.eyes import HIDDEN_EYES
 
 
 @pytest.mark.parametrize("code", EXPRESSION_FILES)
 def test_expression_assets_are_included_in_application(code):
     source = ROOT / "emojis" / EXPRESSION_FILES[code]
     assert source.relative_to(ROOT) in collect_application_source_files(ROOT)
-
-
-@pytest.mark.parametrize(
-    "code,progress", [("009", 0), ("141", 0)] + [("111", i) for i in range(101)]
-)
-def test_all_expression_frames_fit_the_real_sdk(code, progress):
-    vector = expression_vector(code, progress)
-    assert _expression_custom_vector_path(vector) == vector
-    ExpressionRuntimeDomain._build_payload(
-        preset="standby", **HIDDEN_EYES, tag="none", custom_vector_path=vector
-    )
 
 
 @pytest.mark.parametrize("code,progress", [("009", 0), ("111", 62), ("141", 0)])

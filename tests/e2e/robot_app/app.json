@@ -1,12 +1,11 @@
 {
   "schema_version": 2,
-  "id": "local.desktop_robot_check",
-  "name": "猜动物设备检查",
+  "id": "local.desktop_robot_e2e",
+  "name": "猜动物完整语音测试",
   "version": "0.1.0",
   "requires_watcherobot": ">=0.1.10,<0.2",
   "dependencies": ["aiortc>=1.14,<2", "av>=14,<17", "openai>=2,<3", "pydantic>=2,<3", "shapely>=2.1,<3", "svgelements>=1.9.6,<2", "python-dotenv>=1.1,<2", "typesafe-sdk>=0.7.2", "websockets>=15,<16"],
-  "supported_host_platforms": ["windows", "macos"],
-  "description": "验证真实机器人的动物绘图、PCM 播放和麦克风采集。",
-  "author": "Local Developer",
-  "icon": "icon.svg"
+  "supported_host_platforms": ["macos"],
+  "description": "通过真实声音运行五题游戏，验证收音、模型、显示、播报与资源释放。",
+  "author": "Local Developer"
 }

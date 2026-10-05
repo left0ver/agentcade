@@ -1,16 +1,8 @@
-import json
-from pathlib import Path
-
 import pytest
 from pydantic import ValidationError
 
 from guess_animal.generator import GeneratedRound, GenerationHistory
-
-
-def recorded_round() -> dict:
-    return json.loads(
-        (Path(__file__).parent / "fixtures" / "generated_round.json").read_text(encoding="utf-8")
-    )
+from tests.samples import recorded_round
 
 
 @pytest.mark.parametrize("coordinate", [-1, 412, 1.5, True, "12"])
@@ -84,6 +76,16 @@ def test_identical_drawings_are_rejected_even_with_different_names():
     data = recorded_round()
     data["animals"][1]["strokes"] = data["animals"][0]["strokes"]
     with pytest.raises(ValidationError, match="互不重复"):
+        GeneratedRound.model_validate(data)
+
+
+@pytest.mark.parametrize("axis,message", [(0, "宽度不足"), (1, "高度不足")])
+def test_drawing_must_fill_minimum_screen_width_and_height(axis, message):
+    data = recorded_round()
+    for stroke in data["animals"][0]["strokes"]:
+        for point in stroke["points"]:
+            point[axis] //= 4
+    with pytest.raises(ValidationError, match=message):
         GeneratedRound.model_validate(data)
 
 

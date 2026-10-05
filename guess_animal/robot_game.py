@@ -50,7 +50,10 @@ class RobotGame:
         self._speaking = False
         self._last_activity = time.monotonic()
         self._publish_state("等待交流")
-        self.app.logger.info("绘图 provider：%s", settings.drawing_provider)
+        self.app.logger.info(
+            "LLM provider：%s，模型：%s",
+            settings.llm.provider, settings.llm.model_name or "CLI 默认模型",
+        )
 
     async def microphone(self, seconds: float) -> AsyncIterator[bytes]:
         session = await asyncio.to_thread(self.robot.microphone.open_pcm, queue_size=128)

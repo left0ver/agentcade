@@ -198,7 +198,10 @@ class QwenSpeech:
         timeline: deque[tuple[float, float, bool]] = deque(maxlen=30000)
         sent_samples = 0
         input_finished = False
-        async with self.task("asr", self.settings.asr_model, parameters) as task:
+        async with (
+            self.task("asr", self.settings.asr_model, parameters) as task,
+            asyncio.timeout(None) as completion,
+        ):
             ready.set()
 
             async def send_audio() -> None:
@@ -211,13 +214,14 @@ class QwenSpeech:
                     async with asyncio.timeout(10):
                         await task.socket.send(frame.data)
                 input_finished = True
+                completion.reschedule(asyncio.get_running_loop().time() + 30)
                 await task.send("finish-task", {"input": {}})
 
             async def receive_text() -> None:
                 last_sentence = 0
                 while True:
-                    async with asyncio.timeout(30):
-                        event = await task.receive()
+                    # 静音期间允许没有识别事件；连接由 WebSocket 心跳检查。
+                    event = await task.receive()
                     if isinstance(event, bytes):
                         raise TypeError("ASR 返回了非预期的音频数据")
                     kind = event["header"]["event"]

@@ -26,6 +26,11 @@ dev = ["pytest>=8,<10", "ruff>=0.12,<1"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+addopts = "--strict-markers -m 'not e2e'"
+markers = [
+    "e2e: 调用真实模型或机器人，显式使用 -m e2e 执行",
+    "robot: 使用机器人、电脑扬声器和真实语音服务",
+]
 
 [tool.ruff]
 target-version = "py311"
