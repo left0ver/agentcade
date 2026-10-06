@@ -70,7 +70,7 @@ class OutputRequest:
 
 class MainAgent:
     def __init__(self, settings: Settings, games):
-        self.provider = create_provider(settings)
+        self.provider = create_provider(settings.llm)
         self.games = games
         self.active: ActiveGame | None = None
         self.history = deque(maxlen=48)

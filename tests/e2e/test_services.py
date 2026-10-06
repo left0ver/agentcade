@@ -6,6 +6,7 @@ from dataclasses import replace
 import pytest
 
 from games.guess_animal.animals import COMMAND_HOTWORDS
+from games.guess_animal.config import Settings as AnimalSettings
 from games.guess_animal.game import Decision
 from games.guess_animal.generator import HISTORY_TTL_SECONDS, AnimalGenerator, GenerationHistory
 from games.guess_animal.judge import JevJudge
@@ -52,7 +53,7 @@ def test_jev_routes_commands_answers_and_conversation(run_directory):
     async def exercise():
         animal, wrong, *_ = recorded_animals()
         alias = animal.aliases[0] if animal.aliases else animal.name
-        judge = JevJudge(Settings.from_environment())
+        judge = JevJudge(AnimalSettings.from_environment())
         results = []
         cases = (
             ("我们来玩你画我猜", None, False, Decision.START),
@@ -82,8 +83,9 @@ def test_jev_routes_commands_answers_and_conversation(run_directory):
     asyncio.run(exercise())
 
 
-def settings_for_provider(provider):
-    settings = Settings.from_environment()
+def settings_for_provider(provider, settings=None):
+    if settings is None:
+        settings = AnimalSettings.from_environment()
     if provider == settings.llm.provider:
         return settings
     # 比较本机 CLI 时使用各自已经登录的默认模型。
@@ -98,7 +100,9 @@ def settings_for_provider(provider):
 
 @pytest.mark.parametrize("provider", ["openai", "claude_code", "codex"])
 def test_provider_conversation_retains_context_for_followup(provider, run_directory):
-    asyncio.run(check_conversation(settings_for_provider(provider), run_directory))
+    asyncio.run(check_conversation(
+        settings_for_provider(provider, Settings.from_environment()), run_directory,
+    ))
 
 
 async def check_conversation(settings, run_directory):

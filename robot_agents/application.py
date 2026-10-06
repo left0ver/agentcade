@@ -1,10 +1,7 @@
 import asyncio
-import os
 import time
 from contextlib import aclosing
-from pathlib import Path
 
-from robot_agents.config import ROOT
 from robot_agents.main_agent import MainAgent
 from robot_agents.microphone import MicrophoneInput
 from robot_agents.output import OutputCoordinator
@@ -81,6 +78,5 @@ class RobotApplication:
 
 
 async def run_application(app, settings):
-    catalog = Path(os.getenv("GAME_CATALOG", str(ROOT / "games.json")))
-    async with connect_games(settings, catalog) as games:
+    async with connect_games(settings.game_catalog) as games:
         await RobotApplication(app, settings, games).run()

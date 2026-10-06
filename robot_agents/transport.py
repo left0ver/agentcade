@@ -32,7 +32,6 @@ from google.protobuf.json_format import MessageToDict
 from pydantic import Field, TypeAdapter
 from starlette.applications import Starlette
 
-from robot_agents.config import Settings
 from robot_agents.protocol import (
     PROTOCOL_VERSION,
     GameDescriptor,
@@ -52,6 +51,7 @@ class RemoteGame(Model):
     kind: Literal["remote"]
     id: str
     url: str
+    timeout_seconds: int = Field(default=210, gt=0)
 
 
 Catalog = TypeAdapter(list[Annotated[LocalGame | RemoteGame, Field(discriminator="kind")]])
@@ -226,14 +226,11 @@ class GameConnection:
 
 
 @asynccontextmanager
-async def connect_games(settings: Settings, path: Path):
+async def connect_games(path: Path):
     entries = Catalog.validate_json(path.read_text(encoding="utf-8"))
     if len({item.id for item in entries}) != len(entries):
         raise ValueError("游戏注册 ID 不能重复")
     async with AsyncExitStack() as resources:
-        http = await resources.enter_async_context(httpx.AsyncClient(
-            timeout=settings.llm.timeout_seconds + 30, trust_env=False,
-        ))
         games = {}
         for entry in entries:
             if isinstance(entry, LocalGame):
@@ -242,9 +239,15 @@ async def connect_games(settings: Settings, path: Path):
                 descriptor = GameDescriptor.model_validate(factory.descriptor.model_dump())
                 if descriptor.id != entry.id:
                     raise ValueError("注册 ID 与游戏声明不一致")
+                settings = factory.load_settings()
+                timeout = settings.llm.timeout_seconds + 30
                 url = await resources.enter_async_context(serve_game(factory, settings))
             else:
                 url = entry.url
+                timeout = entry.timeout_seconds
+            http = await resources.enter_async_context(httpx.AsyncClient(
+                timeout=timeout, trust_env=False,
+            ))
             card = await A2ACardResolver(http, url).get_agent_card()
             skill = next((item for item in card.skills if item.id == entry.id), None)
             if skill is None or PROTOCOL_VERSION not in skill.tags:

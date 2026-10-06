@@ -1,6 +1,9 @@
+import os
+
 import pytest
 
-from robot_agents.config import LLMSettings
+from games.guess_number.config import Settings as NumberSettings
+from robot_agents.config import LLMSettings, read_environment
 
 
 @pytest.mark.parametrize("provider", ["claude_code", "codex"])
@@ -51,3 +54,30 @@ def test_invalid_api_urls_are_rejected(url):
 def test_valid_api_urls_still_require_key_and_model(url):
     with pytest.raises(ValueError, match="LLM_API_KEY 和 LLM_MODEL_NAME"):
         LLMSettings(base_url=url)
+
+
+def test_agent_files_are_independent_and_do_not_change_environment(run_directory):
+    original = dict(os.environ)
+    first = run_directory / "first.env"
+    second = run_directory / "second.env"
+    first.write_text("LLM_PROVIDER=codex\nLLM_TIMEOUT_SECONDS=15\n")
+    second.write_text("LLM_PROVIDER=claude_code\nLLM_TIMEOUT_SECONDS=45\n")
+    one = NumberSettings.from_environment(first)
+    two = NumberSettings.from_environment(second)
+    assert (one.llm.provider, one.llm.timeout_seconds) == ("codex", 15)
+    assert (two.llm.provider, two.llm.timeout_seconds) == ("claude_code", 45)
+    second.write_text("LLM_PROVIDER=codex\nLLM_TIMEOUT_SECONDS=90\n")
+    assert NumberSettings.from_environment(first) == one
+    assert NumberSettings.from_environment(second).llm.timeout_seconds == 90
+    assert dict(os.environ) == original
+
+
+def test_missing_agent_file_fails_without_loading_other_configuration(run_directory):
+    with pytest.raises(FileNotFoundError):
+        NumberSettings.from_environment(run_directory / "missing.env")
+
+
+def test_environment_file_values_do_not_expand_process_variables(run_directory):
+    path = run_directory / "literal.env"
+    path.write_text("LLM_COMMAND='${HOME}/codex'\n")
+    assert read_environment(path)["LLM_COMMAND"] == "${HOME}/codex"

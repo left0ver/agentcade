@@ -26,7 +26,7 @@ class ConversationReply(BaseModel):
 
 class Conversation:
     def __init__(self, settings: Settings):
-        self.provider = create_provider(settings)
+        self.provider = create_provider(settings.llm)
         self.history: deque[dict[str, str]] = deque(maxlen=12)
 
     async def answer(self, text: str, *, phase: str) -> str:

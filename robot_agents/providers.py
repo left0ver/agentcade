@@ -12,7 +12,7 @@ from uuid import uuid4
 from openai import AsyncOpenAI
 from pydantic import BaseModel
 
-from robot_agents.config import ROOT, Settings
+from robot_agents.config import ROOT, LLMSettings
 
 
 class LLMProvider(Protocol):
@@ -32,13 +32,13 @@ def format_system_prompt(system: str, schema: dict) -> str:
 
 
 class OpenAIProvider:
-    def __init__(self, settings: Settings):
-        self.model = settings.llm.model_name
-        self.timeout = settings.llm.timeout_seconds
-        self.extra_body = settings.llm.extra_body
+    def __init__(self, settings: LLMSettings):
+        self.model = settings.model_name
+        self.timeout = settings.timeout_seconds
+        self.extra_body = settings.extra_body
         self.client = AsyncOpenAI(
-            api_key=settings.llm.api_key,
-            base_url=settings.llm.base_url,
+            api_key=settings.api_key,
+            base_url=settings.base_url,
             timeout=self.timeout,
             max_retries=0,
         )
@@ -123,14 +123,14 @@ def codex_server_overrides() -> list[str]:
 
 
 class LocalCLIProvider:
-    def __init__(self, settings: Settings):
-        self.name = settings.llm.provider
-        command = settings.llm.command or {"claude_code": "claude", "codex": "codex"}[self.name]
+    def __init__(self, settings: LLMSettings):
+        self.name = settings.provider
+        command = settings.command or {"claude_code": "claude", "codex": "codex"}[self.name]
         self.command = shutil.which(command)
         if self.command is None:
             raise FileNotFoundError(f"找不到 {self.name} 命令：{command}")
-        self.model = settings.llm.model_name
-        self.timeout = settings.llm.timeout_seconds
+        self.model = settings.model_name
+        self.timeout = settings.timeout_seconds
 
     async def generate(self, system: str, request: dict, schema: dict) -> str:
         directory = ROOT / ".artifacts" / "provider_runs" / self.name / uuid4().hex
@@ -206,7 +206,7 @@ class LocalCLIProvider:
         pass
 
 
-def create_provider(settings: Settings) -> LLMProvider:
-    if settings.llm.provider == "openai":
+def create_provider(settings: LLMSettings) -> LLMProvider:
+    if settings.provider == "openai":
         return OpenAIProvider(settings)
     return LocalCLIProvider(settings)

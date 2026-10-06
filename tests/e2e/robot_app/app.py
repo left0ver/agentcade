@@ -11,6 +11,7 @@ from watcherobot.application import ApplicationContext
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 from games.guess_animal.agent import GameAgent as GuessAnimalAgent
+from games.guess_animal.config import Settings as AnimalSettings
 from games.guess_animal.generator import GeneratedRound
 from robot_agents.application import RobotApplication
 from robot_agents.audio_stream import PcmAudioPlayer
@@ -114,7 +115,7 @@ class VoiceScenario:
         await self.until(lambda: any(
             item["text"] == f"第{number}题画好了！请看图，说出动物名称。"
             for item in self.report["spoken"]
-        ), self.application.settings.llm.timeout_seconds + 120)
+        ), AnimalSettings.from_environment().llm.timeout_seconds + 120)
         await self.ready()
         paths = next(item["paths"] for item in reversed(self.report["spoken"]) if item["paths"])
         # 对照真实生成归档验证当前图案和答案。
@@ -310,7 +311,7 @@ async def check_expression_progress(application, report):
 
 
 async def check_feedback_motion(application, report):
-    agent = GuessAnimalAgent(application.settings)
+    agent = GuessAnimalAgent(GuessAnimalAgent.load_settings())
     animal, second, *_ = recorded_animals()
     try:
         async with asyncio.TaskGroup() as group:
@@ -357,7 +358,7 @@ async def main():
     settings = Settings.from_environment()
     async with (
         ApplicationContext.from_environment() as app,
-        connect_games(settings, ROOT / "games.json") as games,
+        connect_games(settings.game_catalog) as games,
     ):
         report["rtc_events"] = []
 

@@ -19,13 +19,13 @@ pytestmark = pytest.mark.e2e
 
 def test_remote_registration_reads_agent_card_and_runs_game(run_directory):
     async def exercise():
-        settings = Settings.from_environment()
+        settings = GuessNumberAgent.load_settings()
         async with serve_game(GuessNumberAgent, settings) as url:
             catalog = run_directory / "remote-games.json"
             catalog.write_text(json.dumps([
                 {"kind": "remote", "id": "guess_number", "url": url},
             ]), encoding="utf-8")
-            async with connect_games(settings, catalog) as games:
+            async with connect_games(catalog) as games:
                 connection = games["guess_number"]
                 assert connection.descriptor == GuessNumberAgent.descriptor
                 start = await connection.send("remote-session", GameRequest(action="start"))
@@ -37,7 +37,7 @@ def test_remote_registration_reads_agent_card_and_runs_game(run_directory):
 
 def test_a2a_game_start_and_end_use_real_http():
     async def exercise():
-        async with connect_games(Settings.from_environment(), ROOT / "games.json") as games:
+        async with connect_games(ROOT / "games.json") as games:
             connection = games["guess_animal"]
             start = GameRequest(action="start")
             result = await connection.send("test-animal-session", start)
@@ -57,10 +57,10 @@ def test_registered_second_agent_and_main_agent_interaction(run_directory):
         catalog = json.loads((ROOT / "games.json").read_text())
         registration = run_directory / "games.json"
         registration.write_text(json.dumps(catalog[:1]), encoding="utf-8")
-        async with connect_games(Settings.from_environment(), registration) as initial:
+        async with connect_games(registration) as initial:
             assert list(initial) == ["guess_animal"]
         registration.write_text(json.dumps(catalog), encoding="utf-8")
-        async with connect_games(Settings.from_environment(), registration) as games:
+        async with connect_games(registration) as games:
             agent = MainAgent(Settings.from_environment(), games)
 
             async def consume():
@@ -150,7 +150,7 @@ def test_registered_second_agent_and_main_agent_interaction(run_directory):
 
 def test_exit_cancels_real_generation_and_rejects_late_input():
     async def exercise():
-        async with connect_games(Settings.from_environment(), ROOT / "games.json") as games:
+        async with connect_games(ROOT / "games.json") as games:
             agent = MainAgent(Settings.from_environment(), games)
             try:
                 await agent.apply(StartDecision(action="start", game_id="guess_animal"))
@@ -197,7 +197,7 @@ def test_exit_cancels_real_generation_and_rejects_late_input():
 def test_complete_five_rounds_over_a2a_with_real_generation(run_directory):
     async def exercise():
         transcript = []
-        async with connect_games(Settings.from_environment(), ROOT / "games.json") as games:
+        async with connect_games(ROOT / "games.json") as games:
             connection = games["guess_animal"]
             context_id = run_directory.name
             result = await connection.send(context_id, GameRequest(action="start"))
@@ -260,7 +260,7 @@ def test_real_voice_enters_main_agent_and_registered_game(run_directory):
         settings = Settings.from_environment()
         speech = QwenSpeech(settings)
         recognized = []
-        async with connect_games(settings, ROOT / "games.json") as games:
+        async with connect_games(ROOT / "games.json") as games:
             agent = MainAgent(settings, games)
             try:
                 for index, text in enumerate(("有哪些游戏？", "开始猜数字游戏。", "结束游戏。")):

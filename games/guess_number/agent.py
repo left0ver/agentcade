@@ -3,6 +3,7 @@ from typing import Annotated, Literal
 
 from pydantic import Field
 
+from games.guess_number.config import Settings
 from robot_agents.protocol import (
     GameDescriptor,
     GameRequest,
@@ -36,14 +37,16 @@ SYSTEM_PROMPT = """你是猜数字游戏 Agent，理解玩家当前话语。
 
 
 class GameAgent:
+    load_settings = staticmethod(Settings.from_environment)
+
     descriptor = GameDescriptor(
         id="guess_number", name="猜数字", aliases=["数字游戏", "猜数"],
         description="猜一个1至20的秘密整数，最多五次机会，每次会提示大了还是小了。",
         required_capabilities=["motion"],
     )
 
-    def __init__(self, settings):
-        self.provider = create_provider(settings)
+    def __init__(self, settings: Settings):
+        self.provider = create_provider(settings.llm)
         self.target = secrets.randbelow(20) + 1
         self.attempts = 0
         self.revision = 0

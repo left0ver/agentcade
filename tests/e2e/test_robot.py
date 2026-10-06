@@ -7,7 +7,8 @@ import sys
 
 import pytest
 
-from robot_agents.config import ROOT, Settings
+from games.guess_animal.config import Settings as AnimalSettings
+from robot_agents.config import ROOT
 
 pytestmark = [pytest.mark.e2e, pytest.mark.robot]
 
@@ -47,7 +48,7 @@ def test_answer_feedback_moves_head_with_speech(run_directory):
 def run_robot(run_directory, scenario):
     if sys.platform != "darwin":
         pytest.fail("语音 E2E 使用 macOS afplay，请在连接机器人的 Mac 上执行")
-    settings = Settings.from_environment()
+    settings = AnimalSettings.from_environment()
     request = {"run_id": run_directory.name, "output": str(run_directory), "scenario": scenario}
     (ROOT / ".artifacts/tests/robot-request.json").write_text(json.dumps(request))
     environment = os.environ | {"PYTHONUNBUFFERED": "1"}

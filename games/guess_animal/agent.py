@@ -1,7 +1,7 @@
+from games.guess_animal.config import Settings
 from games.guess_animal.game import Decision, Game, Reply
 from games.guess_animal.generator import AnimalGenerator
 from games.guess_animal.judge import JevJudge
-from robot_agents.config import Settings
 from robot_agents.protocol import (
     GameDescriptor,
     GameRequest,
@@ -13,6 +13,8 @@ from robot_agents.vector import encode_vector
 
 
 class GameAgent:
+    load_settings = staticmethod(Settings.from_environment)
+
     descriptor = GameDescriptor(
         id="guess_animal", name="你画我猜", aliases=["猜动物", "画画猜动物"],
         description="机器人画动物，玩家猜名称。每局五题，每题两次机会，可以要提示或跳题。",

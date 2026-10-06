@@ -29,7 +29,10 @@
 需要 Python 3.11+、[uv](https://docs.astral.sh/uv/)，以及一台和电脑在同一局域网的机器人，固件支持 `expression.runtime.v3`、`expression.vector_accessory.v1`、`microphone`、`audio.stream`、`motion`。
 
 ```bash
-cp .env.example .env              # 填入 API key
+cp robot_agents/.env.example robot_agents/.env
+cp games/guess_animal/.env.example games/guess_animal/.env
+cp games/guess_number/.env.example games/guess_number/.env
+# 分别填写三个文件中的配置
 uv sync
 uv run watcherobot robot setup    # 仅首次连接设备
 uv run watcherobot app run .
@@ -39,20 +42,26 @@ uv run watcherobot app run .
 
 ## 配置
 
-配置写在 `.env` 里，同名环境变量优先。各项含义见 `.env.example` 的注释：
+每个 Agent 从自己目录中的 `.env` 读取配置，对应目录提供 `.env.example`。文件必须存在；读取时不修改进程环境，不读取根目录 `.env`，也不使用同名进程环境变量覆盖。配置值按字面读取，不展开 `${...}`。
+
+| 配置文件 | 用途 |
+| --- | --- |
+| `robot_agents/.env` | 主 Agent 模型、ASR、TTS、音色和游戏目录路径 |
+| `games/guess_animal/.env` | 绘图模型、Jev、置信度和预计绘图时间 |
+| `games/guess_number/.env` | 猜数字语义理解模型 |
 
 | 变量 | 用途 |
 | --- | --- |
 | `DASHSCOPE_API_KEY` | 语音识别和语音合成（阿里云百炼 Qwen-Audio） |
-| `TYPESAFE_API_KEY` | Jev，判断玩家说的是指令、答案还是闲聊 |
-| `LLM_API_KEY` | OpenAI 兼容接口，主 Agent、画图和猜数字语言理解共用 |
-| `GAME_CATALOG` | 游戏目录 JSON 路径，默认项目中的 `games.json` |
+| `TYPESAFE_API_KEY` | 你画我猜的 Jev，判断指令、答案和闲聊 |
+| `LLM_API_KEY` | 当前配置文件所属 Agent 的 OpenAI 兼容接口凭据 |
+| `GAME_CATALOG` | 主程序的游戏目录路径，默认项目中的 `games.json`；相对路径以主程序 `.env` 所在目录为基准 |
 
 `DASHSCOPE_BASE_URL` 是百炼业务空间的地址，换 key 时记得一起改。
 
 ## 闲聊和画图模型
 
-闲聊和画图共用 `LLM_PROVIDER` 和 `LLM_MODEL_NAME`，使用相同的接口地址、凭据和请求参数：
+三个 Agent 各自在自己的 `.env` 中设置 `LLM_PROVIDER`、`LLM_MODEL_NAME`、接口地址、凭据和请求参数。相同键名在不同文件中互不影响，可以分别使用不同 provider：
 
 | 值 | 说明 |
 | --- | --- |
@@ -60,7 +69,7 @@ uv run watcherobot app run .
 | `claude_code` | 本机 `claude --print`，用 CLI 已登录的账号 |
 | `codex` | 本机 `codex exec`，同上 |
 
-OpenAI 兼容接口只需填写同一组变量，例如：
+OpenAI 兼容接口在对应 Agent 的配置文件中填写，例如：
 
 ```dotenv
 LLM_PROVIDER=openai
@@ -73,7 +82,7 @@ LLM_EXTRA_BODY_JSON={"thinking":{"type":"enabled"},"reasoning_effort":"low"}
 更换服务时，将 `LLM_BASE_URL`、`LLM_API_KEY`、`LLM_MODEL_NAME` 改成目标服务的配置。接口需要支持 JSON 对象输出。`LLM_EXTRA_BODY_JSON` 默认是 `{}`，用于填写所选服务支持的可选参数，如思考模式、输出长度或服务等级。它不能覆盖模型、消息和响应格式。`LLM_TIMEOUT_SECONDS` 控制单次调用超时，默认 180 秒。
 
 使用本机 CLI 时，在启动游戏的电脑上安装对应 CLI，并在终端完成登录。
-将 `.env` 中同名的六项变量替换为下面的一组，语音和 Jev 配置继续保留。
+将对应 Agent 的 `.env` 中同名的六项变量替换为下面的一组，保留该文件中的其他配置。
 
 **Codex**：执行 `codex login` 登录，使用 `codex login status` 检查登录状态。
 
@@ -97,11 +106,11 @@ LLM_EXTRA_BODY_JSON={}
 LLM_COMMAND=claude
 ```
 
-`LLM_MODEL_NAME` 留空时，闲聊和画图均使用 CLI 默认模型；填写时通过 `--model` 指定。切换到 CLI 时，将接口模式下的模型名称清空，`LLM_EXTRA_BODY_JSON` 设为 `{}`。CLI 使用自己的登录凭据。
+`LLM_MODEL_NAME` 留空时，该 Agent 使用 CLI 默认模型；填写时通过 `--model` 指定。切换到 CLI 时，将接口模式下的模型名称清空，`LLM_EXTRA_BODY_JSON` 设为 `{}`。CLI 使用自己的登录凭据。
 
 `LLM_COMMAND` 只填写可执行文件名称或绝对路径，不包含 `exec`、`--print` 等参数，程序会自动添加。留空时按 provider 使用 `codex` 或 `claude`。如果启动游戏时找不到命令，macOS/Linux 可用 `command -v codex` 或 `command -v claude` 查询绝对路径，Windows PowerShell 可用 `(Get-Command codex).Source` 或 `(Get-Command claude).Source`，将结果填入 `LLM_COMMAND`。
 
-修改 `.env` 后重新启动游戏。`LLM_TIMEOUT_SECONDS` 同样控制 CLI 调用超时，可根据所用模型的耗时调整。
+修改配置后重新启动应用。`LLM_TIMEOUT_SECONDS` 控制对应 Agent 的模型调用超时，包括 CLI 调用。本地游戏的 A2A 等待时间为该游戏的模型超时加 30 秒。远程游戏在 `games.json` 中单独配置 `timeout_seconds`，默认 210 秒。
 
 生成失败或超时会直接报错，不会自动换 provider。每次生成的 JSON 和去重记录存在 `.artifacts/`，重启后仍然有效。
 
@@ -173,6 +182,7 @@ flowchart TD
 | `robot_agents/output.py` | 统一播报、屏幕、表情、动作与麦克风管理 |
 | `games/guess_animal/agent.py` | 你画我猜入口 `GameAgent` |
 | `games/guess_number/agent.py` | 猜数字入口 `GameAgent` |
+| `games/<game_id>/config.py` | 游戏独立配置读取与检查 |
 | `games.json` | 游戏目录 |
 | `games/guess_animal/game.py` | 出题、计分、提示 |
 | `games/guess_animal/generator.py` | 提示词、输出校验、去重历史 |
@@ -196,6 +206,7 @@ flowchart TD
 每个游戏位于 `games/<game_id>/`，目录包含 `__init__.py`，统一入口文件为 `agent.py`，入口类为 `GameAgent`。游戏专用模块放在对应游戏目录内；公共语音、模型和显示能力位于 `robot_agents/`。新增游戏实现以下接口：
 
 - `descriptor: GameDescriptor` 声明唯一 ID、名称、玩法描述、别名和设备能力。
+- `load_settings()` 读取本游戏目录的 `.env`，返回包含 `llm: LLMSettings` 的游戏配置；其他游戏专用配置由游戏自行定义。
 - `__init__(settings)` 创建独立游戏状态与模型客户端。
 - `async handle(request: GameRequest) -> GameResult` 处理 `start`、`input`、`timeout`、`end`，以及游戏需要的 `prepare`、`advance`。
 - `async close()` 释放模型连接和游戏资源。

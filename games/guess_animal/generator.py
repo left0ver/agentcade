@@ -11,7 +11,8 @@ from uuid import uuid4
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from games.guess_animal.animals import Animal
-from robot_agents.config import ROOT, Settings
+from games.guess_animal.config import Settings
+from robot_agents.config import ROOT
 from robot_agents.providers import create_provider
 from robot_agents.vector import Stroke, encode_vector
 
@@ -233,7 +234,7 @@ hints 必须恰好包含三个简短中文提示，按照从宽泛到明显的�
 
 class AnimalGenerator:
     def __init__(self, settings: Settings, history_path: Path | None = None):
-        self.provider = create_provider(settings)
+        self.provider = create_provider(settings.llm)
         self.history_path = history_path or ROOT / ".artifacts" / "generation_history.json"
         self.history = GenerationHistory.load(self.history_path)
         self.lock = asyncio.Lock()
