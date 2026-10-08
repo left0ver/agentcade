@@ -2,7 +2,10 @@ import asyncio
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from fractions import Fraction
 
+from av import AudioFrame
+from av.filter import Graph
 from watcherobot.audio import PCMAudio
 from watcherobot.robot import AudioDomain
 
@@ -14,6 +17,35 @@ class CapturedPcm:
     data: bytes
     captured_at: float
     muted: bool = False
+
+
+class PcmInputGain:
+    def __init__(self, gain):
+        if not 1 <= gain <= 8:
+            raise ValueError("麦克风输入增益必须在 1 至 8 之间")
+        self.graph = Graph()
+        source = self.graph.add_abuffer(sample_rate=16000, format="s16", layout="mono")
+        volume = self.graph.add("volume", f"volume={gain}:precision=fixed")
+        sink = self.graph.add("abuffersink")
+        source.link_to(volume)
+        volume.link_to(sink)
+        self.graph.configure()
+        self.samples = 0
+
+    def process(self, pcm):
+        if not pcm or len(pcm) % 2:
+            raise ValueError("输入增益处理需要完整的 PCM 采样")
+        frame = AudioFrame(format="s16", layout="mono", samples=len(pcm) // 2)
+        frame.sample_rate = 16000
+        frame.time_base = Fraction(1, 16000)
+        frame.pts = self.samples
+        frame.planes[0].update(pcm)
+        self.samples += frame.samples
+        self.graph.push(frame)
+        output = self.graph.pull()
+        if output.samples != frame.samples or output.format.name != "s16":
+            raise ValueError("输入增益处理改变了 PCM 格式或采样数量")
+        return bytes(output.planes[0])[:output.samples * 2]
 
 
 @dataclass(frozen=True)

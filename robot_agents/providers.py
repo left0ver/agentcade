@@ -13,10 +13,14 @@ from openai import AsyncOpenAI
 from pydantic import BaseModel
 
 from robot_agents.config import ROOT, LLMSettings
+from robot_agents.tool_server import serve_tools
+from robot_agents.tools import ToolRegistry
 
 
 class LLMProvider(Protocol):
     async def generate(self, system: str, request: dict, schema: dict) -> str: ...
+
+    async def run_tools(self, system: str, request: dict, tools: ToolRegistry) -> str: ...
 
     async def close(self) -> None: ...
 
@@ -58,6 +62,33 @@ class OpenAIProvider:
         if choice.finish_reason != "stop" or not choice.message.content:
             raise RuntimeError(f"LLM 未返回完整内容，结束原因：{choice.finish_reason}")
         return choice.message.content
+
+    async def run_tools(self, system: str, request: dict, tools: ToolRegistry) -> str:
+        messages = [
+            {"role": "system", "content": system},
+            {"role": "user", "content": json.dumps(request, ensure_ascii=False)},
+        ]
+        while True:
+            async with asyncio.timeout(self.timeout):
+                response = await self.client.chat.completions.create(
+                    model=self.model, messages=messages,
+                    tools=[{"type": "function", "function": item}
+                           for item in tools.definitions()],
+                    parallel_tool_calls=False, extra_body=self.extra_body,
+                )
+            choice = response.choices[0]
+            message = choice.message
+            if choice.finish_reason == "stop":
+                return message.content or ""
+            if choice.finish_reason != "tool_calls" or not message.tool_calls:
+                raise RuntimeError(f"模型工具调用没有完成：{choice.finish_reason}")
+            messages.append(message.model_dump(exclude_none=True))
+            for call in message.tool_calls:
+                result = await tools.call(call.function.name, json.loads(call.function.arguments))
+                messages.append({"role": "tool", "tool_call_id": call.id,
+                                 "content": json.dumps(result, ensure_ascii=False)})
+                if tools.completed.is_set():
+                    return ""
 
     async def close(self) -> None:
         await self.client.close()
@@ -106,6 +137,7 @@ class ClaudeResult(BaseModel):
     subtype: str
     is_error: bool
     structured_output: dict[str, Any] | None = None
+    result: str = ""
 
 
 def codex_server_overrides() -> list[str]:
@@ -201,6 +233,70 @@ class LocalCLIProvider:
         command.append("-")
         await run_cli(command, prompt, directory, self.timeout)
         return output_path.read_text(encoding="utf-8")
+
+    async def run_tools(self, system: str, request: dict, tools: ToolRegistry) -> str:
+        directory = ROOT / ".artifacts" / "provider_runs" / self.name / uuid4().hex
+        directory.mkdir(parents=True)
+        prompt = system + "\n当前请求：\n" + json.dumps(request, ensure_ascii=False)
+        (directory / "prompt.txt").write_text(prompt, encoding="utf-8")
+        async with serve_tools(tools) as url:
+            if self.name == "claude_code":
+                command = [
+                    self.command, "--print", "--output-format", "json", "--tools", "",
+                    "--strict-mcp-config", "--mcp-config",
+                    json.dumps({"mcpServers": {"desktop_agent": {
+                        "type": "http", "url": url, "timeout": self.timeout * 2000,
+                    }}}),
+                    "--allowedTools", *[f"mcp__desktop_agent__{name}" for name in tools.tools],
+                    "--disable-slash-commands", "--no-session-persistence",
+                    "--permission-mode", "dontAsk",
+                ]
+            else:
+                command = [
+                    self.command, "exec", "--sandbox", "read-only", "--ephemeral",
+                    "--skip-git-repo-check", "--color", "never",
+                    "--config", 'approval_policy="never"',
+                    "--config", "features.shell_tool=false",
+                    "--config", "features.multi_agent=false",
+                    "--config", "features.apps=false",
+                    "--config", "project_doc_max_bytes=0",
+                    "--config", 'web_search="disabled"',
+                    *codex_server_overrides(),
+                    "--config", f'mcp_servers.desktop_agent.url="{url}"',
+                    "--config", "mcp_servers.desktop_agent.enabled=true",
+                    "--config", "mcp_servers.desktop_agent.required=true",
+                    "--config", 'mcp_servers.desktop_agent.default_tools_approval_mode="approve"',
+                    "--config", f"mcp_servers.desktop_agent.tool_timeout_sec={self.timeout * 2}",
+                    "--output-last-message", str(directory / "result.txt"),
+                ]
+            if self.model:
+                command.extend(("--model", self.model))
+            if self.name == "codex":
+                command.append("-")
+            # 每次游戏操作可能包含生成题目以及生成操作前后的模型请求。
+            task = asyncio.create_task(run_cli(command, prompt, directory, self.timeout * 3))
+            completed = asyncio.create_task(tools.completed.wait())
+            try:
+                await asyncio.wait({task, completed, tools.failure}, return_when=asyncio.FIRST_COMPLETED)
+                if tools.failure.done():
+                    raise tools.failure.result()
+                if completed.done():
+                    return ""
+                output = await task
+            finally:
+                completed.cancel()
+                with suppress(asyncio.CancelledError):
+                    await completed
+                if not task.done():
+                    task.cancel()
+                    with suppress(asyncio.CancelledError):
+                        await task
+            if self.name == "codex":
+                return (directory / "result.txt").read_text(encoding="utf-8")
+            result = ClaudeResult.model_validate_json(output)
+            if result.is_error or result.subtype != "success":
+                raise RuntimeError(f"Claude Code 工具调用没有完成，调用日志：{directory}")
+            return result.result
 
     async def close(self) -> None:
         pass

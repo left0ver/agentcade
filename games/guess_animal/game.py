@@ -13,8 +13,8 @@ class Decision(str, Enum):
     CORRECT = "correct"
     INCORRECT = "incorrect"
     UNCLEAR = "unclear"
-    IGNORE = "ignore"
-    CHAT = "chat"
+    RULES = "rules"
+    STATUS = "status"
 
 
 @dataclass(frozen=True)
@@ -40,7 +40,6 @@ class Game:
         self.revision = 0
         self.active = False
         self.resolved = False
-        self.silence_count = 0
 
     @property
     def animal(self) -> Animal | None:
@@ -52,7 +51,7 @@ class Game:
                 return Reply("题目正在准备，请稍等。")
             return Reply("游戏正在进行，请说出动物名称，也可以说提示、下一题或结束游戏。")
         self.deck = []
-        self.index = self.score = self.attempts = self.silence_count = 0
+        self.index = self.score = self.attempts = 0
         self.hint_index = 0
         self.active = True
         self.resolved = False
@@ -84,9 +83,6 @@ class Game:
 
     def handle(self, decision: Decision, revision: int) -> Reply:
         if revision != self.revision:
-            return Reply()
-        self.silence_count = 0
-        if decision in {Decision.CHAT, Decision.IGNORE}:
             return Reply()
         if decision is Decision.START:
             return self.start()
@@ -123,7 +119,7 @@ class Game:
             raise RuntimeError("当前题目尚未结束")
         self.revision += 1
         self.index += 1
-        self.attempts = self.silence_count = 0
+        self.attempts = 0
         self.hint_index = 0
         self.resolved = False
         if self.index == self.rounds:
@@ -134,11 +130,3 @@ class Game:
                 clear=True,
             )
         return Reply(prepare=True)
-
-    def silence(self) -> Reply:
-        if not self.active or self.animal is None:
-            return Reply()
-        self.silence_count += 1
-        if self.silence_count >= 3:
-            return self.handle(Decision.END, self.revision)
-        return Reply("我在等你的回答。你可以说动物名称、提示，或者结束游戏。")

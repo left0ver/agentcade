@@ -1,5 +1,4 @@
 import asyncio
-import time
 from contextlib import aclosing
 
 from robot_agents.main_agent import MainAgent
@@ -7,6 +6,7 @@ from robot_agents.microphone import MicrophoneInput
 from robot_agents.output import OutputCoordinator
 from robot_agents.protocol import Presentation
 from robot_agents.speech import QwenSpeech
+from robot_agents.speech_input import SpeechInput
 from robot_agents.transport import connect_games
 
 
@@ -17,44 +17,25 @@ class RobotApplication:
         self.speech = QwenSpeech(settings)
         self.agent = MainAgent(settings, games)
         self.output = OutputCoordinator(app, settings, self.input)
-        self.utterances = asyncio.Queue(32)
-
-    def receive(self, utterance):
-        self.app.logger.info("用户：%s", utterance.text)
-        self.agent.last_activity = time.monotonic()
-        self.utterances.put_nowait(utterance)
-
-    async def respond(self):
-        while True:
-            utterance = await self.utterances.get()
-            try:
-                await self.agent.receive(utterance.text, started_at=utterance.started_at)
-            finally:
-                self.utterances.task_done()
+        self.listener = None
 
     async def listen(self, ready):
-        hotwords = ["结束游戏", "继续游戏", "有哪些游戏", "提示", "下一题"]
-        for game in self.agent.games.values():
-            hotwords.extend([game.descriptor.name, *game.descriptor.aliases])
+        self.listener = SpeechInput(self.settings, self.agent, self.input, self.app.logger)
         async with aclosing(self.input.audio()) as audio:
-            await self.speech.transcribe(
-                audio, self.receive, ready=ready, hotwords=tuple(hotwords),
-                on_activity=lambda: setattr(self.agent, "last_activity", time.monotonic()),
-            )
+            await self.listener.run(audio, ready)
 
     async def run(self):
         required = {"expression.runtime.v3", "microphone", "audio.stream"}
         for game in self.agent.games.values():
             required.update(game.descriptor.required_capabilities)
-        missing = [name for name in required if not self.app.robot.supports(name)]
-        if missing:
-            raise RuntimeError("机器人未连接或缺少能力：" + ", ".join(sorted(missing)))
         try:
+            missing = [name for name in required if not self.app.robot.supports(name)]
+            if missing:
+                raise RuntimeError("机器人未连接或缺少能力：" + ", ".join(sorted(missing)))
             await self.output.clear()
             async with asyncio.TaskGroup() as group:
                 tasks = [
                     group.create_task(self.input.capture()),
-                    group.create_task(self.respond()),
                     group.create_task(self.output.run(self.agent)),
                 ]
                 ready = asyncio.Event()
@@ -64,7 +45,8 @@ class RobotApplication:
                     text="我说完话后，你可以和我聊天，也可以说有哪些游戏，选择想玩的游戏。",
                 )])
                 while not self.app.shutdown_requested:
-                    if not self.output.speaking:
+                    if (not self.output.speaking and not self.listener.busy
+                            and not self.listener.input_speaking):
                         await self.agent.tick()
                     await self.output.progress.check()
                     await asyncio.sleep(0.1)

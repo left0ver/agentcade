@@ -9,7 +9,7 @@ from a2a.types import ListTasksRequest, TaskState
 from games.guess_animal.generator import GeneratedRound
 from games.guess_number.agent import GameAgent as GuessNumberAgent
 from robot_agents.config import ROOT, Settings
-from robot_agents.main_agent import MainAgent, StartDecision
+from robot_agents.main_agent import MainAgent
 from robot_agents.protocol import GameRequest
 from robot_agents.transport import connect_games, serve_game
 from robot_agents.vector import encode_vector
@@ -40,8 +40,15 @@ def test_a2a_game_start_and_end_use_real_http():
         async with connect_games(ROOT / "games.json") as games:
             connection = games["guess_animal"]
             start = GameRequest(action="start")
-            result = await connection.send("test-animal-session", start)
-            assert result.state.active and result.next_action == "prepare"
+            updates = []
+
+            async def record(result):
+                updates.append(result)
+
+            result = await connection.send("test-animal-session", start, on_update=record)
+            assert updates[0].state.phase == "生成题目"
+            assert result.state.active and result.state.phase == "等待猜测"
+            assert result.outputs[0].paths
             assert result == await connection.send("test-animal-session", start)
             ended = await connection.send("test-animal-session", GameRequest(action="end"))
             assert not ended.state.active
@@ -87,16 +94,17 @@ def test_registered_second_agent_and_main_agent_interaction(run_directory):
                 revision = agent.active.state.revision
                 await agent.receive("企鹅为什么不会飞？")
                 await consume()
-                assert agent.active.chat_paused and agent.active.state.revision == revision
+                assert agent.active.state.revision == revision
                 assert "企鹅" in transcript[-1]
                 await agent.receive("换成你画我猜。")
                 await consume()
                 assert agent.active.context_id == original
-                assert "退出" in transcript[-1]
-                assert agent.background is None
+                assert "结束" in transcript[-1]
+                await agent.tick()
+                assert not agent.pending
                 await agent.receive("继续游戏。")
                 await consume()
-                assert not agent.active.chat_paused
+                assert agent.active.state.revision == revision
                 low, high = 1, 20
                 for _ in range(5):
                     number = (low + high) // 2
@@ -114,20 +122,20 @@ def test_registered_second_agent_and_main_agent_interaction(run_directory):
                 assert agent.active is None
                 # 两个真实游戏同时申请开始，只允许一个获得会话。
                 await asyncio.gather(
-                    agent.apply(StartDecision(action="start", game_id="guess_number")),
-                    agent.apply(StartDecision(action="start", game_id="guess_animal")),
+                    agent.receive("开始猜数字游戏"),
+                    agent.receive("开始你画我猜游戏"),
                 )
                 await consume()
                 await consume()
                 assert agent.active.game_id == "guess_number"
                 await agent.receive("结束游戏。")
                 assert agent.active.closing
-                await agent.apply(StartDecision(action="start", game_id="guess_animal"))
+                await agent.receive("开始你画我猜游戏")
                 ended = await consume()
                 assert not ended.result.state.active and agent.active is None
                 await consume()
-                assert "退出" in transcript[-1]
-                # 退出完成后另一个游戏才能启动；本测试不请求生成图案。
+                assert "结束" in transcript[-1]
+                # 退出完成后另一个游戏才能启动，生成期间可以结束游戏。
                 await agent.receive("开始你画我猜。")
                 assert agent.active.game_id == "guess_animal"
                 await agent.receive("结束游戏。")
@@ -153,7 +161,7 @@ def test_exit_cancels_real_generation_and_rejects_late_input():
         async with connect_games(ROOT / "games.json") as games:
             agent = MainAgent(Settings.from_environment(), games)
             try:
-                await agent.apply(StartDecision(action="start", game_id="guess_animal"))
+                await agent.receive("开始你画我猜游戏")
                 start = await agent.outputs.get()
                 await agent.output_done(start)
                 original = agent.active.context_id
@@ -166,25 +174,35 @@ def test_exit_cancels_real_generation_and_rejects_late_input():
                         if any(task.status.state == TaskState.TASK_STATE_WORKING
                                for task in tasks.tasks):
                             break
-                        if agent.background.done():
-                            await agent.background
+                        if all(task.done() for task in agent.pending):
+                            await agent.tick()
                             raise AssertionError("题目生成没有进入执行状态")
                         await asyncio.sleep(0.05)
-                from robot_agents.main_agent import ControlDecision
-                await agent.apply(ControlDecision(action="end"), context_id=original)
+                await asyncio.wait_for(agent.receive_utterance(
+                    "现在题目准备好了吗？", original, revision,
+                ), timeout=90)
+                progress = await agent.outputs.get()
+                await agent.output_done(progress)
+                assert progress.result.state.phase == "生成题目"
+                await agent.receive_utterance("结束游戏。", original, revision)
                 ended = await agent.outputs.get()
                 await agent.output_done(ended)
-                assert agent.active is None and agent.background is None
+                assert agent.active is None
+                await asyncio.gather(*agent.pending)
+                await agent.tick()
+                assert not agent.pending
                 tasks = await games["guess_animal"].client.list_tasks(
                     ListTasksRequest(context_id=original),
                 )
-                assert len(tasks.tasks) == 1
-                assert tasks.tasks[0].status.state == TaskState.TASK_STATE_CANCELED
-                await agent.apply(StartDecision(action="start", game_id="guess_number"))
+                assert len(tasks.tasks) == 3
+                assert {task.status.state for task in tasks.tasks} == {
+                    TaskState.TASK_STATE_CANCELED, TaskState.TASK_STATE_COMPLETED,
+                }
+                await agent.receive("开始猜数字游戏")
                 number = await agent.outputs.get()
                 await agent.output_done(number)
                 current_revision = agent.active.state.revision
-                await agent.apply(ControlDecision(action="send"), "我猜企鹅", original, revision)
+                await agent.receive_utterance("我猜企鹅", original, revision)
                 rejected = await agent.outputs.get()
                 assert "会话已经结束" in rejected.outputs[0].text
                 await agent.output_done(rejected)
@@ -204,16 +222,19 @@ def test_complete_five_rounds_over_a2a_with_real_generation(run_directory):
 
             async def send(action, text=""):
                 nonlocal result
+                updates = []
+
+                async def record(update):
+                    updates.append(update)
+
                 result = await connection.send(context_id, GameRequest(
                     action=action, text=text, revision=result.state.revision,
-                ))
-                transcript.append(result.model_dump(mode="json"))
-                return "".join(output.text for output in result.outputs)
+                ), on_update=record)
+                transcript.extend(update.model_dump(mode="json") for update in updates)
+                return "".join(output.text for update in updates for output in update.outputs)
 
             try:
                 for number in range(1, 6):
-                    assert result.next_action == "prepare"
-                    await send("prepare")
                     assert result.state.phase == "等待猜测"
                     drawing = result.outputs[0].paths[-1]
                     animals = (
@@ -237,12 +258,13 @@ def test_complete_five_rounds_over_a2a_with_real_generation(run_directory):
                         assert f"答案是{animal.name}" in await send("input", "下一题")
                     else:
                         assert f"答对了，是{animal.name}" in await send("input", f"我猜是{animal.name}")
-                    assert result.next_action == "advance"
-                    await send("advance")
+                    if number < 5 and number != 3:
+                        assert result.state.phase == "等待下一题"
+                        await send("input", "下一题")
                 assert not result.state.active
-                assert "5题里，你答对了3题" in result.outputs[0].text
+                assert "5题里，你答对了3题" in "".join(output.text for output in result.outputs)
                 tasks = await connection.client.list_tasks(ListTasksRequest(context_id=context_id))
-                assert len(tasks.tasks) == 5
+                assert len(tasks.tasks) == 14
                 assert all(task.status.state == TaskState.TASK_STATE_COMPLETED
                            for task in tasks.tasks)
             finally:
@@ -263,22 +285,28 @@ def test_real_voice_enters_main_agent_and_registered_game(run_directory):
         async with connect_games(ROOT / "games.json") as games:
             agent = MainAgent(settings, games)
             try:
-                for index, text in enumerate(("有哪些游戏？", "开始猜数字游戏。", "结束游戏。")):
+                cases = (
+                    ("有哪些游戏？", "list_games"), ("开始猜数字游戏。", "start_game"),
+                    ("给我一个提示。", "send_message"),
+                    ("我猜的数字是零。", "send_message"),
+                    ("结束游戏。", "end_game"),
+                )
+                for index, (text, action) in enumerate(cases):
                     pcm = await speech.synthesize(text)
                     write_wav(run_directory / f"speech-{index}.wav", pcm)
 
-                    async def frames(data=pcm):
-                        for frame in [*asr_frames(data), *([bytes(640)] * 75)]:
+                    async def audio(recording=pcm):
+                        for frame in asr_frames(recording):
                             yield frame
-                            await asyncio.sleep(0.02)
 
-                    result = await speech.recognize(frames(), hotwords=("猜数字", "结束游戏"))
-                    assert result
-                    recognized.append(result)
-                    await agent.receive(result)
+                    utterance = await speech.recognize(audio())
+                    assert utterance
+                    await agent.receive(utterance)
+                    assert action in [call["name"] for call in agent.last_tool_calls]
+                    recognized.append({"tool": action, "utterance": utterance})
                     output = await agent.outputs.get()
                     await agent.output_done(output)
-                    if index == 1:
+                    if index in {1, 2, 3}:
                         assert agent.active.game_id == "guess_number"
                 assert agent.active is None
             finally:

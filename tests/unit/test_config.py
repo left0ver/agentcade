@@ -3,7 +3,7 @@ import os
 import pytest
 
 from games.guess_number.config import Settings as NumberSettings
-from robot_agents.config import LLMSettings, read_environment
+from robot_agents.config import LLMSettings, Settings, read_environment
 
 
 @pytest.mark.parametrize("provider", ["claude_code", "codex"])
@@ -30,7 +30,8 @@ def test_extra_body_requires_an_object(value):
         LLMSettings(provider="codex", extra_body=value)
 
 
-@pytest.mark.parametrize("key", ["model", "messages", "stream", "response_format"])
+@pytest.mark.parametrize("key", ["model", "messages", "stream", "response_format",
+                                 "tools", "tool_choice", "parallel_tool_calls"])
 def test_extra_body_cannot_override_shared_model_or_output_format(key):
     with pytest.raises(ValueError, match="不能覆盖"):
         LLMSettings(extra_body={key: None})
@@ -81,3 +82,47 @@ def test_environment_file_values_do_not_expand_process_variables(run_directory):
     path = run_directory / "literal.env"
     path.write_text("LLM_COMMAND='${HOME}/codex'\n")
     assert read_environment(path)["LLM_COMMAND"] == "${HOME}/codex"
+
+
+def test_main_agent_configuration_uses_independent_llm_and_speech(run_directory):
+    path = run_directory / "main.env"
+    path.write_text(
+        "DASHSCOPE_API_KEY=config-validation\n"
+        "DASHSCOPE_BASE_URL=https://workspace.example.com/compatible-mode/v1\n"
+        "GAME_CATALOG=games.json\n"
+        "LLM_PROVIDER=openai\nLLM_API_KEY=main-config-validation\n"
+        "LLM_BASE_URL=https://api.deepseek.com\nLLM_MODEL_NAME=deepseek-flash\n"
+    )
+    settings = Settings.from_environment(path)
+    assert settings.asr_model == "qwen-audio-3.1-asr-flash-streaming"
+    assert settings.tts_model == "qwen-audio-3.1-tts-flash"
+    assert settings.tts_voice == "yuxiaoyun_v3.1"
+    assert settings.websocket_url == (
+        "wss://workspace.example.com/api-ws/v1/inference"
+    )
+    assert settings.game_catalog == run_directory / "games.json"
+    assert settings.llm.api_key == "main-config-validation"
+    assert settings.llm.base_url == "https://api.deepseek.com"
+    assert settings.llm.model_name == "deepseek-flash"
+    game_path = run_directory / "game.env"
+    game_path.write_text("LLM_PROVIDER=codex\n")
+    assert NumberSettings.from_environment(game_path).llm.provider == "codex"
+    game_path.write_text("LLM_PROVIDER=claude_code\n")
+    assert Settings.from_environment(path) == settings
+
+
+def test_main_agent_requires_its_own_llm_configuration(run_directory):
+    path = run_directory / "main.env"
+    path.write_text("DASHSCOPE_API_KEY=validation\nTYPESAFE_API_KEY=validation\n")
+    with pytest.raises(ValueError, match="LLM_BASE_URL"):
+        Settings.from_environment(path)
+
+
+@pytest.mark.parametrize("parameters", [
+    {"asr_silence_ms": 100}, {"speech_timeout_seconds": 0},
+    {"input_gain": 0}, {"input_gain": 9}, {"tts_voice": ""}, {"asr_model": ""},
+])
+def test_main_agent_rejects_invalid_speech_parameters(parameters):
+    with pytest.raises(ValueError):
+        Settings(dashscope_api_key="config-validation", llm=LLMSettings(provider="codex"),
+                 **parameters)

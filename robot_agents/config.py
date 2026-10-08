@@ -47,8 +47,9 @@ class LLMSettings:
             raise ValueError("LLM_TIMEOUT_SECONDS 必须大于零")
         if not isinstance(self.extra_body, dict):
             raise TypeError("LLM_EXTRA_BODY_JSON 必须是 JSON 对象")
-        if {"model", "messages", "response_format", "stream"} & self.extra_body.keys():
-            raise ValueError("LLM_EXTRA_BODY_JSON 不能覆盖模型、消息、响应格式或流式模式")
+        if {"model", "messages", "response_format", "stream", "tools", "tool_choice",
+            "parallel_tool_calls"} & self.extra_body.keys():
+            raise ValueError("LLM_EXTRA_BODY_JSON 不能覆盖模型、消息、响应格式、流式模式或工具参数")
         if self.provider == "openai":
             parts = urlsplit(self.base_url)
             if (
@@ -71,24 +72,33 @@ class Settings:
     asr_model: str = "qwen-audio-3.1-asr-flash-streaming"
     tts_model: str = "qwen-audio-3.1-tts-flash"
     tts_voice: str = "yuxiaoyun_v3.1"
+    speech_timeout_seconds: int = 90
+    asr_silence_ms: int = 800
+    input_gain: float = 4.0
 
     def __post_init__(self) -> None:
         for name in (
             "dashscope_api_key",
-            "asr_model",
-            "tts_model",
-            "tts_voice",
+            "asr_model", "tts_model", "tts_voice",
         ):
             if not getattr(self, name).strip():
                 raise ValueError(f"配置 {name} 不能为空")
         parts = urlsplit(self.base_url)
         if parts.scheme != "https" or not parts.hostname or parts.username or parts.password:
             raise ValueError("DASHSCOPE_BASE_URL 必须是有效的 HTTPS 地址")
+        if self.speech_timeout_seconds <= 0:
+            raise ValueError("SPEECH_TIMEOUT_SECONDS 必须大于零")
+        if not 200 <= self.asr_silence_ms <= 6000:
+            raise ValueError("ASR_SILENCE_MS 必须在 200 至 6000 之间")
+        if not 1 <= self.input_gain <= 8:
+            raise ValueError("ASR_INPUT_GAIN 必须在 1 至 8 之间")
 
     @property
     def websocket_url(self) -> str:
         parts = urlsplit(self.base_url)
-        return urlunsplit(("wss", parts.netloc, "/api-ws/v1/inference", "", ""))
+        return urlunsplit((
+            "wss", parts.netloc, "/api-ws/v1/inference", "", "",
+        ))
 
     @classmethod
     def from_environment(cls, path: Path | None = None) -> "Settings":
@@ -106,4 +116,7 @@ class Settings:
             asr_model=values.get("QWEN_ASR_MODEL", "qwen-audio-3.1-asr-flash-streaming"),
             tts_model=values.get("QWEN_TTS_MODEL", "qwen-audio-3.1-tts-flash"),
             tts_voice=values.get("QWEN_TTS_VOICE", "yuxiaoyun_v3.1"),
+            speech_timeout_seconds=int(values.get("SPEECH_TIMEOUT_SECONDS", "90")),
+            asr_silence_ms=int(values.get("ASR_SILENCE_MS", "800")),
+            input_gain=float(values.get("ASR_INPUT_GAIN", "4")),
         )

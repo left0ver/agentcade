@@ -1,5 +1,7 @@
 import asyncio
 
+from watcherobot.errors import CommandError
+
 from robot_agents.audio_stream import PcmAudioPlayer, sdk_command
 from robot_agents.expressions import expression_vector
 from robot_agents.eyes import HIDDEN_EYES, STANDBY_EYES
@@ -11,6 +13,7 @@ class OutputCoordinator:
     def __init__(self, app, settings, microphone):
         self.app, self.robot, self.input = app, app.robot, microphone
         self.speech = QwenSpeech(settings)
+        self.last_text = ""
         self.audio = PcmAudioPlayer(self.robot.audio)
         self.display_lock = asyncio.Lock()
         self.progress = ProgressDisplay(self._show_vector, self.display_lock)
@@ -29,6 +32,23 @@ class OutputCoordinator:
     async def clear(self):
         async with self.display_lock:
             await sdk_command(self.robot.expression_runtime.start, "standby", **STANDBY_EYES)
+
+    async def update_vector(self, path):
+        async with self.display_lock:
+            for attempt in range(3):
+                try:
+                    await sdk_command(
+                        self.robot.expression_runtime.update, custom_vector_path=path,
+                    )
+                    return
+                except CommandError as error:
+                    if (error.message_type != "ctrl.expression.runtime.update"
+                            or error.reason != "invalid_argument" or attempt == 2):
+                        raise
+                    self.app.logger.warning(
+                        "表情更新返回 invalid_argument，0.2 秒后重试（%s/2）", attempt + 1,
+                    )
+                    await asyncio.sleep(0.2)
 
     async def gesture(self, name):
         positions = {
@@ -66,10 +86,9 @@ class OutputCoordinator:
             await self.show_vector(output.paths[0])
             for path in output.paths[1:]:
                 await asyncio.sleep(0.16)
-                async with self.display_lock:
-                    await sdk_command(self.robot.expression_runtime.update, custom_vector_path=path)
+                await self.update_vector(path)
         self.speaking = True
-        await self.input.pause()
+        await self.input.pause(owner=self)
         progress_token = None
         try:
             async with asyncio.TaskGroup() as group:
@@ -87,9 +106,11 @@ class OutputCoordinator:
                         group.create_task(self.restore(output.restore_path))
 
                 if output.text:
+                    audio = await self.speech.synthesize(output.text)
+                    self.last_text = output.text
                     self.app.logger.info("机器人：%s", output.text)
                     metrics = await self.audio.play(
-                        await self.speech.synthesize(output.text), on_start=on_start,
+                        audio, on_start=on_start,
                     )
                     self.app.logger.info(
                         "语音播放：任务 %s，启动 %.2f 秒，完成 %.2f 秒，PCM %s 字节",
@@ -102,8 +123,7 @@ class OutputCoordinator:
                 self.progress.advance(progress_token, output.progress_seconds)
         finally:
             self.speaking = False
-        self.input.resume()
-        await self.input.wait_ready()
+        self.input.resume(owner=self)
 
     async def run(self, agent):
         while True:

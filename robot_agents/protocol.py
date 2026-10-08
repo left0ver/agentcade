@@ -1,9 +1,10 @@
+from collections.abc import Awaitable, Callable
 from typing import Literal, Protocol
 from uuid import uuid4
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 
-PROTOCOL_VERSION = "desktop-game/1"
+PROTOCOL_VERSION = "desktop-game/3"
 
 
 class Model(BaseModel):
@@ -34,40 +35,43 @@ class PublicState(Model):
     commands: list[str] = Field(default_factory=list)
     revision: int = Field(default=0, ge=0)
     active: bool = True
-    idle_seconds: int | None = Field(default=None, gt=0)
+    details: dict[str, JsonValue] = Field(default_factory=dict)
+
+
+class ExpectedInput(Model):
+    kind: Literal["answer", "command", "wait", "none"]
+    description: str = Field(min_length=1)
+    examples: list[str] = Field(default_factory=list)
 
 
 class GameRequest(Model):
-    protocol: Literal["desktop-game/1"] = PROTOCOL_VERSION
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=False)
+    protocol: Literal["desktop-game/3"] = PROTOCOL_VERSION
     request_id: str = Field(default_factory=lambda: uuid4().hex)
-    action: Literal["start", "input", "prepare", "advance", "timeout", "end"]
+    action: Literal["start", "input", "end"]
     text: str = ""
     revision: int | None = Field(default=None, ge=0)
 
     @model_validator(mode="after")
     def validate_input(self):
-        if self.action == "input" and (not self.text or self.revision is None):
+        if self.action == "input" and (not self.text.strip() or self.revision is None):
             raise ValueError("游戏输入需要原文和题目版本")
         return self
 
 
 class GameResult(Model):
-    protocol: Literal["desktop-game/1"] = PROTOCOL_VERSION
+    protocol: Literal["desktop-game/3"] = PROTOCOL_VERSION
     state: PublicState
+    expected_input: ExpectedInput
     outputs: list[Presentation] = Field(default_factory=list)
-    next_action: Literal["prepare", "advance"] | None = None
-    handled: bool = True
 
-    @model_validator(mode="after")
-    def validate_completion(self):
-        if not self.state.active and self.next_action is not None:
-            raise ValueError("已结束的游戏不能继续执行任务")
-        return self
+
+GameNotify = Callable[[GameResult], Awaitable[None]]
 
 
 class GameAgent(Protocol):
     descriptor: GameDescriptor
 
-    async def handle(self, request: GameRequest) -> GameResult: ...
+    async def handle(self, request: GameRequest, notify: GameNotify) -> GameResult: ...
 
     async def close(self) -> None: ...

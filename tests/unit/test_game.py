@@ -11,13 +11,13 @@ def start_question(game):
     game.set_question(RECORDED[0])
 
 
-def test_chat_preserves_question_and_attempts():
+def test_unclear_input_preserves_question_and_attempts():
     game = Game()
     start_question(game)
     revision = game.revision
     animal = game.animal
-    reply = game.handle(Decision.CHAT, revision)
-    assert not reply.text and not reply.advance and not reply.prepare
+    reply = game.handle(Decision.UNCLEAR, revision)
+    assert reply.text and not reply.advance and not reply.prepare
     assert game.animal is animal
     assert game.attempts == game.score == game.hint_index == 0
     assert game.revision == revision
@@ -100,7 +100,7 @@ def test_other_commands_and_stale_answers_have_no_answer_feedback(decision):
 def test_hint_and_unclear_do_not_consume_attempts():
     game = Game()
     start_question(game)
-    for decision in (Decision.HINT, Decision.UNCLEAR, Decision.IGNORE):
+    for decision in (Decision.HINT, Decision.UNCLEAR):
         assert not game.handle(decision, game.revision).advance
     assert game.attempts == game.score == 0
 
@@ -182,7 +182,7 @@ def test_old_results_cannot_change_a_later_question_or_new_game():
 
 def test_idle_commands_and_answers_do_not_start_game():
     game = Game()
-    for decision in (Decision.CORRECT, Decision.HINT, Decision.END, Decision.IGNORE):
+    for decision in (Decision.CORRECT, Decision.HINT, Decision.END):
         assert not game.handle(decision, game.revision).text
         assert not game.active
     assert game.handle(Decision.START, game.revision).prepare
@@ -196,20 +196,6 @@ def test_repeated_start_preserves_game():
     game.handle(Decision.START, game.revision)
     assert tuple(game.deck) == deck
     assert game.attempts == 1
-
-
-def test_silence_ends_game_after_three_windows_and_response_resets_count():
-    game = Game()
-    assert not game.silence().text
-    start_question(game)
-    game.silence()
-    game.silence()
-    game.handle(Decision.HINT, game.revision)
-    assert game.silence_count == 0
-    assert not game.silence().clear
-    assert not game.silence().clear
-    assert game.silence().clear
-    assert not game.active
 
 
 def test_advance_requires_resolved_question():
@@ -250,17 +236,15 @@ def test_next_question_must_have_a_new_animal():
     assert len(game.deck) == 1
 
 
-def test_answers_and_silence_during_preparation_do_not_change_game():
+def test_answers_during_preparation_do_not_change_game():
     game = Game()
     game.start()
     pending_revision = game.revision
     for decision in (Decision.CORRECT, Decision.INCORRECT, Decision.SKIP, Decision.HINT):
         assert not game.handle(decision, pending_revision).text
-    for _ in range(3):
-        assert not game.silence().text
     assert not game.start().prepare
     assert game.active
-    assert game.attempts == game.score == game.silence_count == 0
+    assert game.attempts == game.score == 0
     game.set_question(RECORDED[0])
     assert not game.handle(Decision.CORRECT, pending_revision).advance
     assert game.score == 0
