@@ -1,5 +1,5 @@
 from collections.abc import Awaitable, Callable
-from typing import Literal, Protocol
+from typing import Literal
 from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
@@ -67,11 +67,3 @@ class GameResult(Model):
 
 
 GameNotify = Callable[[GameResult], Awaitable[None]]
-
-
-class GameAgent(Protocol):
-    descriptor: GameDescriptor
-
-    async def handle(self, request: GameRequest, notify: GameNotify) -> GameResult: ...
-
-    async def close(self) -> None: ...

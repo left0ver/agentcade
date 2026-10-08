@@ -6,15 +6,12 @@ from games.guess_animal.animals import Animal
 
 
 class Decision(str, Enum):
-    START = "start"
     END = "end"
     HINT = "hint"
     SKIP = "skip"
     CORRECT = "correct"
     INCORRECT = "incorrect"
     UNCLEAR = "unclear"
-    RULES = "rules"
-    STATUS = "status"
 
 
 @dataclass(frozen=True)
@@ -84,8 +81,6 @@ class Game:
     def handle(self, decision: Decision, revision: int) -> Reply:
         if revision != self.revision:
             return Reply()
-        if decision is Decision.START:
-            return self.start()
         if not self.active:
             return Reply()
         if decision is Decision.END:

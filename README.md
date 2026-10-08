@@ -134,8 +134,6 @@ flowchart TD
     Number --> Result
     Extension --> Result
     Main --> Output[统一输出队列]
-    Main -->|聊天请求| Chat[文字 LLM\nOpenAI SDK]
-    Chat -->|回复文字| Output
     Result --> Main
     Output -->|聊天与游戏播报文本| Speech[Qwen TTS]
     Speech --> Audio[SDK PCM 音频播放]
@@ -175,12 +173,11 @@ flowchart TD
 | `games/guess_animal/game.py` | 出题、计分、提示 |
 | `games/guess_animal/generator.py` | 提示词、输出校验、去重历史 |
 | `games/guess_animal/animals.py` | 动物数据结构 |
-| `games/guess_animal/judge.py` | Jev 意图和答案判定 |
+| `games/guess_animal/judge.py` | Jev 动物答案判定 |
 | `robot_agents/providers.py` | OpenAI 兼容接口的结构化输出和工具调用 |
 | `robot_agents/vector.py` | 公共笔画结构和矢量编码 |
 | `robot_agents/expressions.py` | 表情 SVG 转换和进度条 |
 | `robot_agents/eyes.py` | 待机眼睛和眼型预览参数 |
-| `robot_agents/conversation.py` | LLM 闲聊和上下文 |
 | `robot_agents/speech.py` | ASR/TTS WebSocket 协议、语音合成和识别时间关联 |
 | `robot_agents/audio_stream.py` | SDK PCM 播放、完成确认和取消处理 |
 | `robot_agents/microphone.py` | 麦克风收音和播报时静音 |

@@ -185,7 +185,7 @@ def test_idle_commands_and_answers_do_not_start_game():
     for decision in (Decision.CORRECT, Decision.HINT, Decision.END):
         assert not game.handle(decision, game.revision).text
         assert not game.active
-    assert game.handle(Decision.START, game.revision).prepare
+    assert game.start().prepare
 
 
 def test_repeated_start_preserves_game():
@@ -193,7 +193,7 @@ def test_repeated_start_preserves_game():
     start_question(game)
     deck = tuple(game.deck)
     game.handle(Decision.INCORRECT, game.revision)
-    game.handle(Decision.START, game.revision)
+    game.start()
     assert tuple(game.deck) == deck
     assert game.attempts == 1
 

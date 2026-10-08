@@ -5,7 +5,6 @@ from robot_agents.main_agent import MainAgent
 from robot_agents.microphone import MicrophoneInput
 from robot_agents.output import OutputCoordinator
 from robot_agents.protocol import Presentation
-from robot_agents.speech import QwenSpeech
 from robot_agents.speech_input import SpeechInput
 from robot_agents.transport import connect_games
 
@@ -14,7 +13,6 @@ class RobotApplication:
     def __init__(self, app, settings, games):
         self.app, self.settings = app, settings
         self.input = MicrophoneInput(app.robot)
-        self.speech = QwenSpeech(settings)
         self.agent = MainAgent(settings, games)
         self.output = OutputCoordinator(app, settings, self.input)
         self.listener = None

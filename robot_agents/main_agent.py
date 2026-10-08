@@ -98,21 +98,10 @@ class MainAgent:
         return {
             "game_id": self.active.game_id,
             "name": self.games[self.active.game_id].descriptor.name,
-            "state": self.active.state.model_dump(),
-            "closing": self.active.closing,
-            "expected_input": self.active.expected_input.model_dump() if self.active.expected_input else None,
-        }
-
-    def routing_status(self):
-        if self.active is None:
-            return None
-        return {
-            "game_id": self.active.game_id,
-            "name": self.games[self.active.game_id].descriptor.name,
             "phase": self.active.state.phase,
             "state": self.active.state.model_dump(),
-            "expected_input": self.active.expected_input.model_dump() if self.active.expected_input else None,
             "closing": self.active.closing,
+            "expected_input": self.active.expected_input.model_dump() if self.active.expected_input else None,
         }
 
     async def emit(self, outputs, context_id=None, result=None):
@@ -133,7 +122,7 @@ class MainAgent:
             registry = self.tools_for(text, context_id, revision, completions)
             response = await self.provider.run_tools(self.system_prompt(), {
                 "history": list(self.history),
-                "active_game": self.routing_status(),
+                "active_game": self.status(),
                 "current_utterance": text,
             }, registry)
             self.last_tool_calls = registry.calls

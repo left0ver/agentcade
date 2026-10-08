@@ -92,7 +92,7 @@ class VoiceScenario:
     async def audio_file(self, text):
         if text not in self.audio_files:
             path = self.directory / f"input-{len(self.audio_files)}.wav"
-            write_wav(path, await self.application.speech.synthesize(text))
+            write_wav(path, await self.application.output.speech.synthesize(text))
             self.audio_files[text] = path
         return self.audio_files[text]
 

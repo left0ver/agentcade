@@ -2,8 +2,6 @@ from dataclasses import dataclass
 
 from robot_agents.vector import Stroke, encode_vector
 
-COMMAND_HOTWORDS = ("你画我猜", "猜动物", "提示", "下一题", "结束游戏")
-
 
 @dataclass(frozen=True)
 class Animal:

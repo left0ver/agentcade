@@ -65,10 +65,8 @@ def _filled_path(points: tuple[Point, ...]) -> Stroke:
     return Stroke(tuple(filled), 2)
 
 
-@lru_cache(maxsize=103)
-def expression_strokes(code: ExpressionCode, progress: int = 0) -> tuple[Stroke, ...]:
-    if type(progress) is not int or not 0 <= progress <= 100:
-        raise ValueError("表情进度必须是 0 到 100 的整数")
+@lru_cache(maxsize=3)
+def expression_strokes(code: ExpressionCode) -> tuple[Stroke, ...]:
     shapes = _shapes(code)
     strokes = []
     for shape in shapes:
@@ -77,23 +75,8 @@ def expression_strokes(code: ExpressionCode, progress: int = 0) -> tuple[Stroke,
                 center = (round(shape.cx), round(shape.cy))
                 strokes.append(Stroke((center, center), round(2 * shape.rx)))
             elif isinstance(shape, Rect) and code == "111":
-                if progress == 0:
-                    continue
-                (track,) = [
-                    item for item in shapes if isinstance(item, Rect) and item.stroke == WHITE
-                ]
-                width = (track.width - 2 * (shape.x - track.x)) * progress / 100
-                diameter = min(shape.height, width)
-                y = round(shape.y + shape.height / 2)
-                strokes.append(
-                    Stroke(
-                        (
-                            (round(shape.x + diameter / 2), y),
-                            (round(shape.x + width - diameter / 2), y),
-                        ),
-                        max(1, round(diameter)),
-                    )
-                )
+                # 进度填充由 segmented_progress_strokes 按格数绘制。
+                continue
             else:
                 strokes.append(_filled_path(_points(shape)))
         if shape.stroke == WHITE:
@@ -103,15 +86,15 @@ def expression_strokes(code: ExpressionCode, progress: int = 0) -> tuple[Stroke,
     return result
 
 
-def expression_vector(code: ExpressionCode, progress: int = 0) -> str:
-    return encode_vector(expression_strokes(code, progress))
+def expression_vector(code: ExpressionCode) -> str:
+    return encode_vector(expression_strokes(code))
 
 
 @lru_cache(maxsize=11)
 def segmented_progress_strokes(step: int) -> tuple[Stroke, ...]:
     if type(step) is not int or not 0 <= step <= 10:
         raise ValueError("进度格数必须是 0 到 10 的整数")
-    strokes = list(expression_strokes("111", 0))
+    strokes = list(expression_strokes("111"))
     # 填充线沿外框底边连接，每组最多三格，符合 SDK 的笔画和坐标限制。
     for first in range(0, step, 3):
         points = []
@@ -131,10 +114,3 @@ def segmented_progress_strokes(step: int) -> tuple[Stroke, ...]:
 
 def segmented_progress_vector(step: int) -> str:
     return encode_vector(segmented_progress_strokes(step))
-
-
-def generation_progress(elapsed: float, estimate: float) -> int:
-    if not math.isfinite(elapsed) or elapsed < 0 or not math.isfinite(estimate) or estimate <= 0:
-        raise ValueError("生成耗时和预计时间无效")
-    # 按预计时间线性增长；仅在生成成功后显示满格。
-    return min(99, int(100 * elapsed / estimate))

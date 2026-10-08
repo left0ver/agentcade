@@ -169,7 +169,7 @@ class GameAgent:
                 message = self.check_input(turn)
                 if message:
                     return turn.stage(self.result([Presentation(text=message)]))
-                decision = await self.judge.decide(text, self.game.animal, game_active=True)
+                decision = await self.judge.decide(text, self.game.animal)
                 if decision not in {Decision.CORRECT, Decision.INCORRECT}:
                     return turn.stage(self.result([Presentation(text="你猜的是哪种动物？说一个名字就好。")]))
                 reply = self.game.handle(decision, self.game.revision)
