@@ -112,7 +112,7 @@ class VoiceScenario:
 
     async def question(self, number):
         await self.until(lambda: any(
-            item["text"] == f"第{number}题画好了！请看图，说出动物名称。"
+            item["text"] == f"第{number}题画好啦！你猜这是什么动物？"
             for item in self.report["spoken"]
         ), AnimalSettings.from_environment().llm.timeout_seconds + 120)
         await self.ready()
@@ -189,12 +189,12 @@ class VoiceScenario:
         await self.expect("开始猜数字游戏。", "你有五次机会")
         await self.wait_without_input()
         original = self.application.agent.active.context_id
-        await self.expect("换成你画我猜。", "请先说结束游戏")
+        await self.expect("换成你画我猜。", "先说结束游戏就好")
         assert self.application.agent.active.context_id == original
         before = len(self.report["spoken"])
         await self.say("给我一个提示。")
         await self.until(lambda: any(
-            item["text"] in ("它是一个偶数。", "它是一个奇数。")
+            item["text"] in ("给你个提示，它是偶数。", "给你个提示，它是奇数。")
             for item in self.report["spoken"][before:]
         ))
         self.check("猜数字提示与游戏互斥")
@@ -207,12 +207,12 @@ class VoiceScenario:
             before = len(self.report["spoken"])
             await self.say(f"我猜的数字是{number}。")
             await self.until(lambda before=before: any(
-                item["text"].startswith(("猜大了", "猜小了", "答对了，数字是", "五次机会用完了"))
+                item["text"].startswith(("猜大了", "猜小了", "答对了，数字是", "五次机会用完啦"))
                 for item in self.report["spoken"][before:]
             ))
             reply = next(item["text"] for item in self.report["spoken"][before:]
                          if item["text"].startswith(
-                             ("猜大了", "猜小了", "答对了，数字是", "五次机会用完了")))
+                             ("猜大了", "猜小了", "答对了，数字是", "五次机会用完啦")))
             self.report["number_guesses"].append({"number": number, "reply": reply})
             if reply.startswith("答对了"):
                 assert reply == f"答对了，数字是{number}！你用了{attempt}次机会。"
@@ -238,7 +238,7 @@ class VoiceScenario:
         await self.until(lambda: bool(self.report["spoken"]))
         await self.say("我们来玩你画我猜。")
         await self.until(lambda: any(
-            item["text"].startswith("正在生成第1题") for item in self.report["requested"]
+            item["text"].startswith("我来准备第1题") for item in self.report["requested"]
         ) and self.application.output.speaking)
         await self.say(muted, during_playback=True)
         await self.ready()
@@ -254,7 +254,7 @@ class VoiceScenario:
         await self.wrong(animal, animal.hints[1].rstrip("。！？.!?") + "。")
         self.check("答错继续提示并恢复动物图案")
         await self.expect("再给我一个提示。", animal.hints[2].rstrip("。！？.!?") + "。")
-        await self.expect("再给我一个提示。", "提示已经全部说完了")
+        await self.expect("再给我一个提示。", "提示都给你啦")
         self.check("提示用完后不重复线索")
         await self.expect(f"我猜是{animal.name}。", f"答对了，是{animal.name}")
         self.check("答对计分与答对表情")
@@ -274,14 +274,14 @@ class VoiceScenario:
         await self.say("下一题。")
         animal = await self.question(5)
         await self.expect(f"我猜是{animal.name}。", f"答对了，是{animal.name}")
-        await self.until(lambda: any("5题里，你答对了3题" in item["text"]
+        await self.until(lambda: any("5题都猜完啦！你答对了3题" in item["text"]
                                     for item in self.report["spoken"]))
         await self.until(lambda: self.application.agent.active is None)
         self.report.update(score=3, completed_rounds=5)
         self.check("完整五题游戏与最终分数")
         await self.expect("开始猜数字游戏。", "你有五次机会")
         original = self.application.agent.active.context_id
-        await self.expect("换成你画我猜。", "请先说结束游戏")
+        await self.expect("换成你画我猜。", "先说结束游戏就好")
         assert self.application.agent.active.context_id == original
         await self.expect("结束游戏。", "猜数字游戏已经结束")
         await self.until(lambda: self.application.agent.active is None)

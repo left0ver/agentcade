@@ -41,8 +41,13 @@ class RobotApplication:
                 ready = asyncio.Event()
                 tasks.append(group.create_task(self.listen(ready)))
                 await ready.wait()
+                game_names = "、".join(game.descriptor.name for game in self.agent.games.values())
+                greeting = (
+                    f"你好呀！现在可以玩{game_names}。想玩哪个？也可以和我聊聊天。"
+                    if game_names else "你好呀！现在还没有可玩的游戏，我们可以聊聊天。"
+                )
                 await self.agent.emit([Presentation(
-                    text="我说完话后，你可以和我聊天，也可以说有哪些游戏，选择想玩的游戏。",
+                    text=greeting,
                 )])
                 while not self.app.shutdown_requested:
                     if (not self.output.speaking and not self.listener.busy

@@ -1,4 +1,5 @@
 import asyncio
+import json
 import time
 from collections import deque
 from dataclasses import dataclass
@@ -19,6 +20,10 @@ class StartGameInput(ToolInput):
 
 SYSTEM_PROMPT = """你是桌面机器人的主 Agent，负责普通聊天和调用游戏工具。
 根据 current_utterance 自然回复，通常一至三句、120字以内，不使用 Markdown。
+像面对面聊天一样说话，使用简短、自然的口语，语气友好，不刻意卖萌。
+面向用户只说游戏名称和玩法，不提 Agent、工具、会话、协议或内部状态字段。
+当前可用游戏列在本系统提示词末尾，名称、别名、介绍和排列顺序以该目录为准。
+介绍游戏时简短说明用户怎么玩，不逐字朗读整份目录，也不补充目录里没有的游戏或能力。
 history 用于理解指代。role=game_agent 的消息来自独立游戏 Agent。
 游戏规则、题目、答案、提示、判定和计分由游戏 Agent 处理，不能自行生成或宣布游戏结果。
 查询有哪些游戏、理解游戏名称和编号时调用 list_games。
@@ -68,6 +73,14 @@ class MainAgent:
         self.closed = False
         self.last_tool_calls: list[dict] = []
 
+    def system_prompt(self):
+        catalog = [game.descriptor.model_dump() for game in self.games.values()]
+        return (
+            SYSTEM_PROMPT
+            + "\n\n当前可用游戏：\n"
+            + json.dumps(catalog, ensure_ascii=False, indent=2)
+        )
+
     def publish(self, revision=None):
         current_revision = self.active.state.revision if self.active else 0
         self.changed.append((
@@ -115,13 +128,12 @@ class MainAgent:
     async def receive_utterance(self, text, context_id, revision):
         async with self.input_lock:
             if context_id is not None and (self.active is None or context_id != self.active.context_id):
-                return await self.emit([Presentation(text="刚才的游戏会话已经结束，请重新说一下。")])
+                return await self.emit([Presentation(text="刚才那局已经结束了。你想说什么，再告诉我一次吧。")])
             completions = []
             registry = self.tools_for(text, context_id, revision, completions)
-            response = await self.provider.run_tools(SYSTEM_PROMPT, {
+            response = await self.provider.run_tools(self.system_prompt(), {
                 "history": list(self.history),
                 "active_game": self.routing_status(),
-                "games": [game.descriptor.model_dump() for game in self.games.values()],
                 "current_utterance": text,
             }, registry)
             self.last_tool_calls = registry.calls
@@ -155,7 +167,7 @@ class MainAgent:
                 claim()
                 if self.active is not None:
                     name = self.games[self.active.game_id].descriptor.name
-                    message = f"当前正在玩{name}。请先说结束游戏，退出后再开始其他游戏。"
+                    message = f"我们还在玩{name}呢。想换一个的话，先说结束游戏就好。"
                     completions.append(await self.emit([Presentation(text=message)]))
                     return {"message": message}
                 if game_id not in self.games:
@@ -168,11 +180,11 @@ class MainAgent:
 
         def validate_session():
             if self.active is None:
-                return "当前没有进行中的游戏。可以说有哪些游戏。"
+                return "我们还没开始玩呢。想玩什么？也可以问我有哪些游戏。"
             if context_id != self.active.context_id:
-                return "刚才的游戏会话已经结束，请重新说一下。"
+                return "刚才那局已经结束了。你想说什么，再告诉我一次吧。"
             if self.active.closing:
-                return "当前游戏正在结束，请稍等。"
+                return "这局马上就结束了，稍等一下。"
             return None
 
         async def end_game():

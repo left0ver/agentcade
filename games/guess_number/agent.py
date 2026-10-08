@@ -31,7 +31,8 @@ class GameAgent:
     load_settings = staticmethod(Settings.from_environment)
     descriptor = GameDescriptor(
         id="guess_number", name="猜数字", aliases=["数字游戏", "猜数"],
-        description="猜一个1至20的秘密整数，最多五次机会，每次会提示大了还是小了。",
+        description="我会选一个1到20的整数，你来猜，最多有五次机会。"
+                    "猜错时，我会告诉你大了还是小了，也可以问我要提示。",
         required_capabilities=["motion"],
     )
 
@@ -78,19 +79,24 @@ class GameAgent:
             self.active = True
             self.revision += 1
             return turn.stage(self.feedback(
-                "我们来猜数字！我想好了一个1至20的整数，你有五次机会。请说一个数字。",
+                "来猜数字吧！我想好了一个1到20的整数，你有五次机会。你猜是多少？",
             ))
 
         async def get_rules():
             return turn.stage(self.feedback(self.descriptor.description))
 
         async def get_game_state():
-            return turn.stage(self.feedback(self.result().state.status))
+            return turn.stage(self.feedback(
+                f"你已经猜了{self.attempts}次，还有{5 - self.attempts}次机会。"
+                if self.active else "这局已经结束啦。",
+            ))
 
         async def get_hint():
             if not self.active:
                 raise ValueError("当前没有进行中的游戏")
-            return turn.stage(self.feedback("它是一个偶数。" if self.target % 2 == 0 else "它是一个奇数。"))
+            return turn.stage(self.feedback(
+                "给你个提示，它是偶数。" if self.target % 2 == 0 else "给你个提示，它是奇数。",
+            ))
 
         async def submit_guess(number):
             turn.claim()
@@ -100,11 +106,11 @@ class GameAgent:
             self.revision += 1
             if number == self.target:
                 self.active = False
-                text = f"答对了，数字是{self.target}！你用了{self.attempts}次机会。"
+                text = f"答对了，数字是{self.target}！你猜了{self.attempts}次就猜中了。"
                 return turn.stage(self.feedback(text, "correct"))
             if self.attempts == 5:
                 self.active = False
-                text = f"五次机会用完了，答案是{self.target}。"
+                text = f"五次机会用完啦，我想的数字是{self.target}。"
             else:
                 direction = "大了" if number > self.target else "小了"
                 text = f"猜{direction}，还有{5 - self.attempts}次机会。"
@@ -114,7 +120,7 @@ class GameAgent:
             turn.claim("end")
             self.active = False
             self.revision += 1
-            return turn.stage(self.feedback("猜数字游戏已经结束。"))
+            return turn.stage(self.feedback("好，猜数字游戏已经结束啦。"))
 
         return ToolRegistry([
             Tool("start_game", "初始化游戏并随机选择秘密整数。", NoInput, start_game),
@@ -132,7 +138,7 @@ class GameAgent:
                 if not self.active:
                     raise ValueError("游戏会话已经结束")
                 if request.revision != self.revision:
-                    return self.feedback("刚才的回答已经处理，请根据当前提示继续猜。")
+                    return self.feedback("刚才那次已经算过啦，照着现在的提示继续猜吧。")
             turn = GameTurn(request, notify, self.result)
             registry = self.tools_for(turn)
             await self.provider.run_tools(SYSTEM_PROMPT, {

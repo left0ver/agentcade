@@ -115,7 +115,7 @@ def test_hints_and_wrong_answers_share_progress_without_repeating_clues(decision
     hints = RECORDED[0].hints
     for index, decision in enumerate(decisions):
         reply = game.handle(decision, game.revision)
-        prefix = "还没有答对。" if decision is Decision.INCORRECT else ""
+        prefix = "再想想，给你个提示：" if decision is Decision.INCORRECT else ""
         assert reply.text == prefix + hints[index] + "。"
         assert game.hint_index == index + 1
         assert game.attempts == decisions[:index + 1].count(Decision.INCORRECT)
@@ -123,7 +123,7 @@ def test_hints_and_wrong_answers_share_progress_without_repeating_clues(decision
     assert third.text == hints[2] + "。"
     for _ in range(2):
         exhausted = game.handle(Decision.HINT, game.revision)
-        assert "提示已经全部说完" in exhausted.text
+        assert "提示都给你啦" in exhausted.text
         assert all(hint not in exhausted.text for hint in hints)
     assert game.attempts == 1 and game.score == 0
     final = game.handle(Decision.INCORRECT, game.revision)
@@ -144,12 +144,12 @@ def test_hint_progress_resets_for_each_question_and_new_game():
     assert game.hint_index == game.attempts == 0
     assert game.handle(Decision.HINT, game.revision).text == RECORDED[1].hints[0] + "。"
     reply = game.handle(Decision.INCORRECT, game.revision)
-    assert reply.text == "还没有答对。" + RECORDED[1].hints[1] + "。"
+    assert reply.text == "再想想，给你个提示：" + RECORDED[1].hints[1] + "。"
     game.handle(Decision.END, game.revision)
     start_question(game)
     assert game.handle(Decision.HINT, game.revision).text == RECORDED[0].hints[0] + "。"
     reply = game.handle(Decision.INCORRECT, game.revision)
-    assert reply.text == "还没有答对。" + RECORDED[0].hints[1] + "。"
+    assert reply.text == "再想想，给你个提示：" + RECORDED[0].hints[1] + "。"
 
 
 def test_skip_moves_to_next_animal_without_score():

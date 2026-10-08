@@ -48,8 +48,8 @@ class Game:
     def start(self) -> Reply:
         if self.active:
             if self.animal is None:
-                return Reply("题目正在准备，请稍等。")
-            return Reply("游戏正在进行，请说出动物名称，也可以说提示、下一题或结束游戏。")
+                return Reply("我还在准备这幅画，画好就告诉你。")
+            return Reply("我们正在猜这幅画呢。你觉得是什么动物？也可以要个提示，或者跳过这题。")
         self.deck = []
         self.index = self.score = self.attempts = 0
         self.hint_index = 0
@@ -57,8 +57,8 @@ class Game:
         self.resolved = False
         self.revision += 1
         return Reply(
-            f"我们来玩你画我猜！一共{self.rounds}题，每题可以回答{self.max_attempts}次。"
-            "直接说动物名称，也可以说提示、下一题或结束游戏。",
+            f"来玩你画我猜吧！我来画，你来猜，一共{self.rounds}题，每题有{self.max_attempts}次机会。"
+            "想要提示或者跳过，直接告诉我就好。",
             prepare=True,
         )
 
@@ -76,7 +76,7 @@ class Game:
         if animal is None:
             raise RuntimeError("提供提示需要当前题目")
         if self.hint_index >= len(animal.hints):
-            return "提示已经全部说完了，再看看图案吧。"
+            return "提示都给你啦，再看看这幅画，想想是什么动物。"
         hint = animal.hints[self.hint_index]
         self.hint_index += 1
         return hint.rstrip("。！？.!?") + "。"
@@ -92,7 +92,7 @@ class Game:
             self.active = False
             self.revision += 1
             return Reply(
-                f"游戏结束，你答对了{self.score}题。想继续时，说我们来玩你画我猜。", clear=True
+                f"好，游戏结束啦。这次你答对了{self.score}题。", clear=True
             )
         animal = self.animal
         if self.resolved or animal is None:
@@ -111,8 +111,8 @@ class Game:
             if self.attempts >= self.max_attempts:
                 self.resolved = True
                 return Reply(f"这题的答案是{animal.name}。", advance=True, feedback="incorrect")
-            return Reply(f"还没有答对。{self.next_hint()}", feedback="incorrect")
-        return Reply("请说一个动物名称，也可以说提示、下一题或结束游戏。")
+            return Reply(f"再想想，给你个提示：{self.next_hint()}", feedback="incorrect")
+        return Reply("你觉得是什么动物？说一个名字就好，也可以要个提示，或者跳过这题。")
 
     def advance(self) -> Reply:
         if not self.active or not self.resolved:
@@ -125,8 +125,7 @@ class Game:
         if self.index == self.rounds:
             self.active = False
             return Reply(
-                f"这一局完成啦！{self.rounds}题里，你答对了{self.score}题。"
-                "想继续时，说我们来玩你画我猜。",
+                f"这一局{self.rounds}题都猜完啦！你答对了{self.score}题。",
                 clear=True,
             )
         return Reply(prepare=True)

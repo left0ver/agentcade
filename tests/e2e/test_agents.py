@@ -88,7 +88,7 @@ def test_registered_second_agent_and_main_agent_interaction(run_directory):
                 assert agent.active.game_id == "guess_number"
                 await agent.receive("我猜数字是10。", started_at=before_presentation)
                 await consume()
-                assert "刚才的回答已经处理" in transcript[-1]
+                assert "刚才那次已经算过" in transcript[-1]
                 assert "已经猜了0次" in agent.active.state.status
                 original = agent.active.context_id
                 revision = agent.active.state.revision
@@ -204,7 +204,7 @@ def test_exit_cancels_real_generation_and_rejects_late_input():
                 current_revision = agent.active.state.revision
                 await agent.receive_utterance("我猜企鹅", original, revision)
                 rejected = await agent.outputs.get()
-                assert "会话已经结束" in rejected.outputs[0].text
+                assert "刚才那局已经结束" in rejected.outputs[0].text
                 await agent.output_done(rejected)
                 assert agent.active.state.revision == current_revision
             finally:
@@ -248,9 +248,9 @@ def test_complete_five_rounds_over_a2a_with_real_generation(run_directory):
                                  if name not in (animal.name, *animal.aliases))
                     if number == 1:
                         assert animal.hints[0].rstrip("。") in await send("input", "给我提示")
-                        assert "还没有答对" in await send("input", f"我猜是{wrong}")
+                        assert "再想想，给你个提示" in await send("input", f"我猜是{wrong}")
                         assert animal.hints[2].rstrip("。") in await send("input", "再给一个提示")
-                        assert "提示已经全部说完了" in await send("input", "再给一个提示")
+                        assert "提示都给你啦" in await send("input", "再给一个提示")
                     if number == 2:
                         await send("input", f"我猜是{wrong}")
                         assert f"答案是{animal.name}" in await send("input", f"我猜是{wrong}")
@@ -262,7 +262,7 @@ def test_complete_five_rounds_over_a2a_with_real_generation(run_directory):
                         assert result.state.phase == "等待下一题"
                         await send("input", "下一题")
                 assert not result.state.active
-                assert "5题里，你答对了3题" in "".join(output.text for output in result.outputs)
+                assert "5题都猜完啦！你答对了3题" in "".join(output.text for output in result.outputs)
                 tasks = await connection.client.list_tasks(ListTasksRequest(context_id=context_id))
                 assert len(tasks.tasks) == 14
                 assert all(task.status.state == TaskState.TASK_STATE_COMPLETED

@@ -29,7 +29,8 @@ class GameAgent:
     load_settings = staticmethod(Settings.from_environment)
     descriptor = GameDescriptor(
         id="guess_animal", name="你画我猜", aliases=["猜动物", "画画猜动物"],
-        description="机器人画动物，玩家猜名称。每局五题，每题两次机会，可以要提示或跳题。",
+        description="我来画动物，你看图猜名字。一局五题，每题有两次机会。"
+                    "想不出来可以要提示，也可以跳过，随时都能结束游戏。",
         required_capabilities=["expression.vector_accessory.v1", "motion"],
     )
 
@@ -93,13 +94,13 @@ class GameAgent:
         if reply.prepare:
             self.phase = "生成题目"
             outputs.append(Presentation(
-                text=(f"正在生成第{self.game.index + 1}题，大约需要{self.estimate}秒。"
-                      "准备好了我会告诉你，请稍等。"),
+                text=(f"我来准备第{self.game.index + 1}题，预计需要{self.estimate}秒。"
+                      "画好就告诉你。"),
                 expression="thinking", progress_seconds=self.estimate,
             ))
         elif reply.advance:
             self.phase = "等待下一题"
-            outputs.append(Presentation(text="准备好以后，请说下一题。"))
+            outputs.append(Presentation(text="想看下一幅画，就说下一题吧。"))
         elif not self.game.active:
             self.phase = "已结束"
         return self.result(outputs)
@@ -112,7 +113,7 @@ class GameAgent:
             self.phase = "等待猜测"
             return turn.stage(self.result([Presentation(
                 paths=list(animal.drawing_steps()),
-                text=f"第{self.game.index + 1}题画好了！请看图，说出动物名称。",
+                text=f"第{self.game.index + 1}题画好啦！你猜这是什么动物？",
             )]))
 
     def check_input(self, turn, *, resolved=False):
@@ -120,12 +121,12 @@ class GameAgent:
         if not self.game.active:
             raise ValueError("游戏会话已经结束")
         if turn.request.revision != self.game.revision:
-            return "刚才的题目已经结束，请看当前图案再回答。"
+            return "我们按现在这幅画来猜吧。你觉得是什么动物？"
         if self.game.animal is None:
-            return "题目还在准备，请等待，也可以询问进度。"
+            return "我还在准备这幅画，画好就告诉你。"
         if self.game.resolved != resolved:
-            return ("这道题已经结束，请说下一题。" if self.game.resolved
-                    else "当前题目尚未结束，可以回答或者要求跳过。")
+            return ("这题已经结束啦，想继续就说下一题。" if self.game.resolved
+                    else "这题还可以猜，也可以说跳过这题。")
         return None
 
     def tools_for(self, turn):
@@ -141,7 +142,16 @@ class GameAgent:
             return turn.stage(self.result([Presentation(text=self.descriptor.description)]))
 
         async def get_game_state():
-            return turn.stage(self.result([Presentation(text=self.state().status + "。" + self.phase + "。")]))
+            game = self.game
+            if not game.active:
+                text = f"这局已经结束啦，你答对了{game.score}题。"
+            elif self.phase == "生成题目":
+                text = f"我还在准备第{game.index + 1}题，画好就告诉你。"
+            else:
+                text = f"现在是第{game.index + 1}题，你已经答对了{game.score}题。"
+                text += ("这题已经结束啦，想继续就说下一题。" if game.resolved
+                         else f"这题还有{game.max_attempts - game.attempts}次机会。")
+            return turn.stage(self.result([Presentation(text=text)]))
 
         async def get_hint():
             async with self.lock:
@@ -161,7 +171,7 @@ class GameAgent:
                     return turn.stage(self.result([Presentation(text=message)]))
                 decision = await self.judge.decide(text, self.game.animal, game_active=True)
                 if decision not in {Decision.CORRECT, Decision.INCORRECT}:
-                    return turn.stage(self.result([Presentation(text="请明确说出一个动物名称。")]))
+                    return turn.stage(self.result([Presentation(text="你猜的是哪种动物？说一个名字就好。")]))
                 reply = self.game.handle(decision, self.game.revision)
                 self.game.revision += 1
                 result = self.present(reply)
@@ -199,7 +209,7 @@ class GameAgent:
                 if self.game.active:
                     reply = self.game.handle(Decision.END, self.game.revision)
                 else:
-                    reply = Reply("游戏已经结束。", clear=True)
+                    reply = Reply("这局已经结束啦。", clear=True)
                 return turn.stage(self.present(reply))
 
         return ToolRegistry([
@@ -220,7 +230,7 @@ class GameAgent:
             if not self.game.active:
                 raise ValueError("游戏会话已经结束")
             if request.revision != self.game.revision:
-                return self.result([Presentation(text="刚才的题目已经结束，请看当前图案再回答。")])
+                return self.result([Presentation(text="我们按现在这幅画来猜吧。你觉得是什么动物？")])
         turn = GameTurn(request, notify, self.result)
         registry = self.tools_for(turn)
         await self.provider.run_tools(SYSTEM_PROMPT, {

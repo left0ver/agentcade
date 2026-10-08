@@ -134,10 +134,10 @@ def test_audio_game_results_come_from_registered_agent(run_directory):
                             "下一题", "继续猜", "继续游戏", "答对了", "猜大了", "猜小了",
                         ))
                     elif action == "status":
-                        assert agent.status() == previous and "剩余" in "".join(messages)
+                        assert agent.status() == previous and "还有5次机会" in "".join(messages)
                     elif action == "switch":
                         assert agent.active.game_id == "guess_number"
-                        assert "请先说结束游戏" in "".join(messages)
+                        assert "先说结束游戏就好" in "".join(messages)
                     transcript[-1]["game_messages"] = messages
                     for index, message in enumerate(messages):
                         write_wav(run_directory / f"reply-{len(transcript)}-{index}.wav",
