@@ -3,7 +3,7 @@ from collections import deque
 from pydantic import BaseModel, ConfigDict, Field
 
 from robot_agents.config import Settings
-from robot_agents.providers import create_provider
+from robot_agents.providers import OpenAIProvider
 
 SYSTEM_PROMPT = (
     "你是可以自然聊天、回答知识问题的桌面机器人。"
@@ -26,7 +26,7 @@ class ConversationReply(BaseModel):
 
 class Conversation:
     def __init__(self, settings: Settings):
-        self.provider = create_provider(settings.llm)
+        self.provider = OpenAIProvider(settings.llm)
         self.history: deque[dict[str, str]] = deque(maxlen=12)
 
     async def answer(self, text: str, *, phase: str) -> str:

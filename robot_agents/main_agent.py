@@ -9,7 +9,7 @@ from pydantic import Field, create_model
 
 from robot_agents.config import Settings
 from robot_agents.protocol import ExpectedInput, GameRequest, GameResult, Presentation, PublicState
-from robot_agents.providers import create_provider
+from robot_agents.providers import OpenAIProvider
 from robot_agents.tools import NoInput, Tool, ToolInput, ToolRegistry, original_text_input
 
 
@@ -56,7 +56,7 @@ class OutputRequest:
 
 class MainAgent:
     def __init__(self, settings: Settings, games):
-        self.provider = create_provider(settings.llm)
+        self.provider = OpenAIProvider(settings.llm)
         self.games = games
         self.active: ActiveGame | None = None
         self.history = deque(maxlen=48)

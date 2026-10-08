@@ -12,7 +12,7 @@ from robot_agents.protocol import (
     Presentation,
     PublicState,
 )
-from robot_agents.providers import create_provider
+from robot_agents.providers import OpenAIProvider
 from robot_agents.tools import NoInput, Tool, ToolInput, ToolRegistry
 
 
@@ -36,7 +36,7 @@ class GameAgent:
     )
 
     def __init__(self, settings):
-        self.provider = create_provider(settings.llm)
+        self.provider = OpenAIProvider(settings.llm)
         self.target = None
         self.attempts = 0
         self.revision = 0

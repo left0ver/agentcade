@@ -20,29 +20,23 @@ def read_environment(path: Path) -> dict[str, str]:
 
 @dataclass(frozen=True)
 class LLMSettings:
-    provider: str = "openai"
     api_key: str = field(default="", repr=False)
     base_url: str = ""
     model_name: str = ""
-    command: str = ""
     timeout_seconds: int = 180
     extra_body: dict = field(default_factory=dict)
 
     @classmethod
     def from_values(cls, values: dict[str, str]) -> "LLMSettings":
         return cls(
-            provider=values.get("LLM_PROVIDER", "openai"),
             api_key=values.get("LLM_API_KEY", ""),
             base_url=values.get("LLM_BASE_URL", ""),
             model_name=values.get("LLM_MODEL_NAME", ""),
-            command=values.get("LLM_COMMAND", ""),
             timeout_seconds=int(values.get("LLM_TIMEOUT_SECONDS", "180")),
             extra_body=json.loads(values.get("LLM_EXTRA_BODY_JSON", "{}")),
         )
 
     def __post_init__(self) -> None:
-        if self.provider not in {"openai", "claude_code", "codex"}:
-            raise ValueError("LLM_PROVIDER 必须是 openai、claude_code 或 codex")
         if self.timeout_seconds <= 0:
             raise ValueError("LLM_TIMEOUT_SECONDS 必须大于零")
         if not isinstance(self.extra_body, dict):
@@ -50,17 +44,14 @@ class LLMSettings:
         if {"model", "messages", "response_format", "stream", "tools", "tool_choice",
             "parallel_tool_calls"} & self.extra_body.keys():
             raise ValueError("LLM_EXTRA_BODY_JSON 不能覆盖模型、消息、响应格式、流式模式或工具参数")
-        if self.provider == "openai":
-            parts = urlsplit(self.base_url)
-            if (
-                parts.scheme not in {"http", "https"} or not parts.hostname
-                or parts.username or parts.password or parts.query or parts.fragment
-            ):
-                raise ValueError("LLM_BASE_URL 必须是有效的 HTTP 或 HTTPS 接口地址")
-            if not self.api_key.strip() or not self.model_name.strip():
-                raise ValueError("OpenAI 兼容接口需要 LLM_API_KEY 和 LLM_MODEL_NAME")
-        elif self.extra_body:
-            raise ValueError("LLM_EXTRA_BODY_JSON 仅用于 OpenAI 兼容接口")
+        parts = urlsplit(self.base_url)
+        if (
+            parts.scheme not in {"http", "https"} or not parts.hostname
+            or parts.username or parts.password or parts.query or parts.fragment
+        ):
+            raise ValueError("LLM_BASE_URL 必须是有效的 HTTP 或 HTTPS 接口地址")
+        if not self.api_key.strip() or not self.model_name.strip():
+            raise ValueError("OpenAI 兼容接口需要 LLM_API_KEY 和 LLM_MODEL_NAME")
 
 
 @dataclass(frozen=True)

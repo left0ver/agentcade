@@ -67,58 +67,22 @@ uv run watcherobot app run .
 
 ## 文字模型
 
-主 Agent 和游戏 Agent 各自在自己的 `.env` 中设置 `LLM_PROVIDER`、`LLM_MODEL_NAME`、`LLM_BASE_URL`、`LLM_API_KEY` 和请求参数。相同键名在不同文件中互不影响，运行时不会读取其他 Agent 的配置。OpenAI 兼容接口使用原生 function calling；Claude Code 和 Codex 通过本地 MCP 服务调用注册工具。主 Agent 的普通聊天回复直接交给 TTS。
-
-| 值 | 说明 |
-| --- | --- |
-| `openai`（默认） | 通过 OpenAI SDK 调用兼容 Chat Completions 的接口 |
-| `claude_code` | 本机 `claude --print`，用 CLI 已登录的账号 |
-| `codex` | 本机 `codex exec`，同上 |
+主 Agent 和游戏 Agent 各自在自己的 `.env` 中设置 `LLM_MODEL_NAME`、`LLM_BASE_URL`、`LLM_API_KEY` 和请求参数。相同键名在不同文件中互不影响，运行时不会读取其他 Agent 的配置。全部 LLM 调用通过 OpenAI SDK 访问兼容 Chat Completions 的接口，使用原生 function calling 执行注册工具。主 Agent 的普通聊天回复直接交给 TTS。
 
 OpenAI 兼容接口在对应 Agent 的配置文件中填写，例如：
 
 ```dotenv
-LLM_PROVIDER=openai
 LLM_BASE_URL=https://api.deepseek.com
 LLM_API_KEY=填写你的密钥
 LLM_MODEL_NAME=deepseek-flash
 LLM_EXTRA_BODY_JSON={"thinking":{"type":"enabled"},"reasoning_effort":"low"}
 ```
 
-更换服务时，将 `LLM_BASE_URL`、`LLM_API_KEY`、`LLM_MODEL_NAME` 改成目标服务的配置。接口需要支持 JSON 对象输出。`LLM_EXTRA_BODY_JSON` 默认是 `{}`，用于填写所选服务支持的可选参数，如思考模式、输出长度或服务等级。它不能覆盖模型、消息和响应格式。`LLM_TIMEOUT_SECONDS` 控制单次调用超时，默认 180 秒。
+更换服务时，将 `LLM_BASE_URL`、`LLM_API_KEY`、`LLM_MODEL_NAME` 改成目标服务的配置。这三项必须填写，接口需要支持 JSON 对象输出和 function calling。`LLM_EXTRA_BODY_JSON` 默认是 `{}`，用于填写所选服务支持的可选参数，如思考模式、输出长度或服务等级。它不能覆盖模型、消息、响应格式、流式模式或工具参数。`LLM_TIMEOUT_SECONDS` 控制单次调用超时，默认 180 秒。
 
-使用本机 CLI 时，在启动游戏的电脑上安装对应 CLI，并在终端完成登录。
-将对应 Agent 的 `.env` 中同名的六项变量替换为下面的一组，保留该文件中的其他配置。
+修改配置后重新启动应用。本地游戏的 A2A 等待时间为该游戏的模型超时加 30 秒。远程游戏在 `games.json` 中单独配置 `timeout_seconds`，默认 210 秒。
 
-**Codex**：执行 `codex login` 登录，使用 `codex login status` 检查登录状态。
-
-```dotenv
-LLM_PROVIDER=codex
-LLM_API_KEY=
-LLM_BASE_URL=
-LLM_MODEL_NAME=
-LLM_EXTRA_BODY_JSON={}
-LLM_COMMAND=codex
-```
-
-**Claude Code**：执行 `claude auth login` 登录，使用 `claude auth status` 检查登录状态。
-
-```dotenv
-LLM_PROVIDER=claude_code
-LLM_API_KEY=
-LLM_BASE_URL=
-LLM_MODEL_NAME=
-LLM_EXTRA_BODY_JSON={}
-LLM_COMMAND=claude
-```
-
-`LLM_MODEL_NAME` 留空时，该 Agent 使用 CLI 默认模型；填写时通过 `--model` 指定。切换到 CLI 时，将接口模式下的模型名称清空，`LLM_EXTRA_BODY_JSON` 设为 `{}`。CLI 使用自己的登录凭据。
-
-`LLM_COMMAND` 只填写可执行文件名称或绝对路径，不包含 `exec`、`--print` 等参数，程序会自动添加。留空时按 provider 使用 `codex` 或 `claude`。如果启动游戏时找不到命令，macOS/Linux 可用 `command -v codex` 或 `command -v claude` 查询绝对路径，Windows PowerShell 可用 `(Get-Command codex).Source` 或 `(Get-Command claude).Source`，将结果填入 `LLM_COMMAND`。
-
-修改配置后重新启动应用。`LLM_TIMEOUT_SECONDS` 控制对应 Agent 的模型调用超时，包括 CLI 调用。本地游戏的 A2A 等待时间为该游戏的模型超时加 30 秒。远程游戏在 `games.json` 中单独配置 `timeout_seconds`，默认 210 秒。
-
-生成失败或超时会直接报错，不会自动换 provider。每次生成的 JSON 和去重记录存在 `.artifacts/`，重启后仍然有效。
+生成失败或超时会直接报错。每次生成的 JSON 和去重记录存在 `.artifacts/`，重启后仍然有效。
 
 你画我猜的生成提示词要求模型优先选择常见动物，并使用常用、容易读写的名称和别名，避免名称中含有不常见的生僻字。
 
@@ -130,24 +94,23 @@ uv run ruff check app.py robot_agents games scripts tests
 uv run watcherobot app check .
 ```
 
-默认执行 `tests/unit` 中的单元测试，使用真实题目和音频样本，覆盖游戏规则、提示顺序、图案校验、表情、音频处理及进程清理，不连接设备和模型服务。
+默认执行 `tests/unit` 中的单元测试，使用真实题目和音频样本，覆盖游戏规则、提示顺序、图案校验、表情、音频处理和配置校验，不连接设备和模型服务。
 
-E2E 会调用真实服务并产生费用。运行全部 provider 的比较测试时，使用 `LLM_PROVIDER=openai` 配置好游戏接口，Claude Code 和 Codex 需要已经登录；测试使用两个 CLI 各自的默认模型验证画图。真机测试需要连接机器人并停止游戏，将机器人放在 Mac 电脑扬声器附近，确保它能清楚收录电脑播放的声音。
+E2E 使用各 Agent 的 `.env` 调用真实 OpenAI 兼容接口并产生费用。真机测试需要连接机器人并停止游戏，将机器人放在 Mac 电脑扬声器附近，确保它能清楚收录电脑播放的声音。
 
 | 命令 | 检查内容 |
 | --- | --- |
 | `uv run pytest tests/e2e -m e2e -q` | 全部模型服务与真机 E2E |
 | `uv run pytest tests/e2e/test_agents.py -m e2e -q` | 真实 A2A HTTP、游戏注册、模型选择与聊天、单游戏限制、取消生成、完整五题、音频 → ASR → 工具调用 → 游戏 |
 | `uv run pytest tests/e2e/test_main_intent.py tests/e2e/test_speech.py -m e2e -q` | 主 Agent 工具选择、连续 ASR、退出后重新开始、语音输入与完整 A2A 交互 |
-| `uv run pytest tests/e2e/test_tools.py -m e2e -q` | 三种 provider 调用真实游戏工具，验证状态和下一步输入要求 |
-| `uv run pytest tests/e2e/test_services.py -m e2e -q` | 三个 provider 的生成、历史保存、聊天上下文、Jev 分类、ASR → LLM → TTS |
+| `uv run pytest tests/e2e/test_tools.py -m e2e -q` | OpenAI 兼容接口调用真实游戏工具，验证状态和下一步输入要求 |
+| `uv run pytest tests/e2e/test_services.py -m e2e -q` | 模型生成、历史保存、聊天上下文、Jev 分类、ASR → LLM → TTS |
 | `uv run pytest tests/e2e/test_robot.py -m e2e -q` | 真机，仅 macOS：完整五题语音游戏、提示、表情、计分、跳题、交流、结束及音频资源释放 |
 | `uv run pytest tests/e2e/test_robot.py -m e2e -k pcm_playback -q` | 真机：PCM 播放取消、再次播放和麦克风恢复 |
 | `uv run pytest tests/e2e/test_robot.py -m e2e -k repeated_audio -q` | 真机：连续 12 次取消播放、再次播放和麦克风恢复 |
 | `uv run pytest tests/e2e/test_a2a_connections.py -m e2e -q` | 本地 A2A 空闲连接与服务关闭后的后台任务释放 |
 | `uv run pytest tests/e2e/test_robot.py -m e2e -k expression -q` | 真机：三轮十格进度、语音播放、九格等待、完成与取消、旧任务失效 |
 | `uv run pytest tests/e2e/test_robot.py -m e2e -k answer_feedback -q` | 真机：答对点头、答错摇头、语音和表情同时反馈、动作取消与收音恢复 |
-| `uv run pytest tests/e2e/test_services.py -m e2e -k codex -q` | 单独检查 Codex 绘图 |
 | `uv run watcherobot app run scripts/eye_preview` | 真机：逐个预览眼型，不调模型 |
 
 真机 E2E 通过电脑扬声器发声、机器人麦克风收音，调用生产应用流程。它检查提示、答题、表情、计分、跳题、游戏期间聊天、播报期间暂停收音，以及完整五题结束后选择猜数字、拒绝直接切换和退出游戏。两个游戏均检查等待 65 秒期间保持状态且没有提醒。随后检查取消播放、再次播放和麦克风恢复。A2A 测试单独验证生成期间退出、旧会话输入拒绝和同时开始两个游戏；注册测试对共享模块计算文件摘要，验证增加游戏配置前后共享代码完全相同。语音服务测试将真实 TTS 音频交给 ASR，检查模型工具调用、聊天回复和 A2A 游戏结果，并合成播报音频。
@@ -200,7 +163,6 @@ flowchart TD
 | `robot_agents/application.py` | 收音、主 Agent 与输出队列的运行周期 |
 | `robot_agents/speech_input.py` | 持续 ASR 输入、语音增益、识别结果路由与输入版本 |
 | `robot_agents/tools.py` | 工具注册、JSON Schema、参数校验和执行记录 |
-| `robot_agents/tool_server.py` | Claude Code / Codex 使用的本地 MCP 服务 |
 | `robot_agents/game_tools.py` | 游戏消息工具和单次请求管理 |
 | `robot_agents/main_agent.py` | 主 Agent 决策、聊天历史、单游戏限制与 A2A Client 调用 |
 | `robot_agents/transport.py` | 游戏注册、Agent Card、本地服务和 A2A HTTP 通信 |
@@ -214,7 +176,7 @@ flowchart TD
 | `games/guess_animal/generator.py` | 提示词、输出校验、去重历史 |
 | `games/guess_animal/animals.py` | 动物数据结构 |
 | `games/guess_animal/judge.py` | Jev 意图和答案判定 |
-| `robot_agents/providers.py` | OpenAI 兼容接口 / Claude Code / Codex 调用 |
+| `robot_agents/providers.py` | OpenAI 兼容接口的结构化输出和工具调用 |
 | `robot_agents/vector.py` | 公共笔画结构和矢量编码 |
 | `robot_agents/expressions.py` | 表情 SVG 转换和进度条 |
 | `robot_agents/eyes.py` | 待机眼睛和眼型预览参数 |

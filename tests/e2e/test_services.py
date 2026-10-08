@@ -1,7 +1,6 @@
 import asyncio
 import json
 import time
-from dataclasses import replace
 
 import pytest
 
@@ -9,7 +8,7 @@ from games.guess_animal.config import Settings as AnimalSettings
 from games.guess_animal.game import Decision
 from games.guess_animal.generator import HISTORY_TTL_SECONDS, AnimalGenerator, GenerationHistory
 from games.guess_animal.judge import JevJudge
-from robot_agents.config import LLMSettings, Settings
+from robot_agents.config import Settings
 from robot_agents.conversation import Conversation
 from robot_agents.speech import QwenSpeech
 from robot_agents.vector import encode_vector
@@ -19,10 +18,9 @@ from tests.samples import recorded_animals
 pytestmark = pytest.mark.e2e
 
 
-@pytest.mark.parametrize("provider", ["openai", "claude_code", "codex"])
-def test_provider_generates_distinct_questions_and_persists_history(provider, run_directory):
+def test_openai_generates_distinct_questions_and_persists_history(run_directory):
     async def exercise():
-        settings = settings_for_provider(provider)
+        settings = AnimalSettings.from_environment()
         history_path = run_directory / "history.json"
         animals = []
         started = time.time()
@@ -76,21 +74,6 @@ def test_jev_understands_game_answers_and_queries(run_directory):
             )
 
     asyncio.run(exercise())
-
-
-def settings_for_provider(provider, settings=None):
-    if settings is None:
-        settings = AnimalSettings.from_environment()
-    if provider == settings.llm.provider:
-        return settings
-    # 比较本机 CLI 时使用各自已经登录的默认模型。
-    if provider in {"claude_code", "codex"}:
-        return replace(settings, llm=LLMSettings(
-            provider=provider, timeout_seconds=settings.llm.timeout_seconds,
-        ))
-    return replace(settings, llm=replace(
-        settings.llm, provider=provider, command="",
-    ))
 
 
 def test_conversation_retains_context_for_followup(run_directory):

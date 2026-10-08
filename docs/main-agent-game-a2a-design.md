@@ -6,7 +6,7 @@
 
 `robot_agents/tools.py` 保存工具名称、描述、Pydantic 输入模型和执行函数。输入模型直接生成 JSON Schema。工具执行前校验参数，执行错误向调用方传播。每次调用记录名称、参数和结果，保存在 Agent 的 `last_tool_calls` 中。
 
-OpenAI 兼容接口使用 Chat Completions 的 `tools`、`tool_calls` 和 `tool` 消息执行工具循环。Claude Code 和 Codex 通过官方 Python MCP SDK 连接当前进程的工具服务。服务仅监听 `127.0.0.1` 的随机端口，使用每次生成的随机路径，调用结束后关闭。CLI 仅启用本次 Agent 的 MCP 工具。
+全部 Agent 使用 OpenAI 兼容接口，通过 Chat Completions 的 `tools`、`tool_calls` 和 `tool` 消息执行工具循环。模型返回工具名称和参数后，`ToolRegistry` 校验参数并执行对应函数，执行结果作为 `tool` 消息继续交给模型。各 Agent 独立配置接口地址、密钥、模型名称和请求参数。
 
 ## 主 Agent 工具
 
@@ -128,4 +128,4 @@ flowchart TD
 
 ## 验证
 
-单元测试检查工具输入、必填回复字段、游戏规则和配置。真实服务测试检查三种 provider 的工具调用记录、A2A 注册、请求去重、普通聊天、单游戏限制、取消生成、过期输入以及完整五题。运行记录保存在 `.artifacts/tests/`。
+单元测试检查工具输入、必填回复字段、游戏规则和配置。真实服务测试检查 OpenAI 兼容接口的工具调用记录、A2A 注册、请求去重、普通聊天、单游戏限制、取消生成、过期输入以及完整五题。运行记录保存在 `.artifacts/tests/`。

@@ -6,28 +6,16 @@ from games.guess_number.config import Settings as NumberSettings
 from robot_agents.config import LLMSettings, Settings, read_environment
 
 
-@pytest.mark.parametrize("provider", ["claude_code", "codex"])
-def test_local_provider_requires_no_api_credentials(provider):
-    settings = LLMSettings(provider=provider)
-    assert settings.api_key == ""
-    assert settings.model_name == ""
-
-
-def test_unknown_provider_is_rejected():
-    with pytest.raises(ValueError, match="LLM_PROVIDER"):
-        LLMSettings(provider="unknown")
-
-
 @pytest.mark.parametrize("timeout", [0, -1])
 def test_nonpositive_timeout_is_rejected(timeout):
     with pytest.raises(ValueError, match="LLM_TIMEOUT_SECONDS"):
-        LLMSettings(provider="codex", timeout_seconds=timeout)
+        LLMSettings(timeout_seconds=timeout)
 
 
 @pytest.mark.parametrize("value", [None, [], "", 1, True])
 def test_extra_body_requires_an_object(value):
     with pytest.raises(TypeError, match="JSON 对象"):
-        LLMSettings(provider="codex", extra_body=value)
+        LLMSettings(extra_body=value)
 
 
 @pytest.mark.parametrize("key", ["model", "messages", "stream", "response_format",
@@ -35,11 +23,6 @@ def test_extra_body_requires_an_object(value):
 def test_extra_body_cannot_override_shared_model_or_output_format(key):
     with pytest.raises(ValueError, match="不能覆盖"):
         LLMSettings(extra_body={key: None})
-
-
-def test_local_provider_rejects_http_request_parameters():
-    with pytest.raises(ValueError, match="仅用于 OpenAI"):
-        LLMSettings(provider="codex", extra_body={"temperature": 0.5})
 
 
 @pytest.mark.parametrize("url", [
@@ -52,22 +35,26 @@ def test_invalid_api_urls_are_rejected(url):
 
 
 @pytest.mark.parametrize("url", ["https://api.deepseek.com", "http://localhost:8000/v1"])
-def test_valid_api_urls_still_require_key_and_model(url):
+@pytest.mark.parametrize("api_key, model_name", [
+    ("", "model"), ("key", ""), ("   ", "model"), ("key", "   "),
+])
+def test_valid_api_urls_require_key_and_model(url, api_key, model_name):
     with pytest.raises(ValueError, match="LLM_API_KEY 和 LLM_MODEL_NAME"):
-        LLMSettings(base_url=url)
+        LLMSettings(base_url=url, api_key=api_key, model_name=model_name)
 
 
 def test_agent_files_are_independent_and_do_not_change_environment(run_directory):
     original = dict(os.environ)
     first = run_directory / "first.env"
     second = run_directory / "second.env"
-    first.write_text("LLM_PROVIDER=codex\nLLM_TIMEOUT_SECONDS=15\n")
-    second.write_text("LLM_PROVIDER=claude_code\nLLM_TIMEOUT_SECONDS=45\n")
+    credentials = "LLM_BASE_URL=https://api.deepseek.com\nLLM_API_KEY=config-validation\n"
+    first.write_text(credentials + "LLM_MODEL_NAME=first-model\nLLM_TIMEOUT_SECONDS=15\n")
+    second.write_text(credentials + "LLM_MODEL_NAME=second-model\nLLM_TIMEOUT_SECONDS=45\n")
     one = NumberSettings.from_environment(first)
     two = NumberSettings.from_environment(second)
-    assert (one.llm.provider, one.llm.timeout_seconds) == ("codex", 15)
-    assert (two.llm.provider, two.llm.timeout_seconds) == ("claude_code", 45)
-    second.write_text("LLM_PROVIDER=codex\nLLM_TIMEOUT_SECONDS=90\n")
+    assert (one.llm.model_name, one.llm.timeout_seconds) == ("first-model", 15)
+    assert (two.llm.model_name, two.llm.timeout_seconds) == ("second-model", 45)
+    second.write_text(credentials + "LLM_MODEL_NAME=updated-model\nLLM_TIMEOUT_SECONDS=90\n")
     assert NumberSettings.from_environment(first) == one
     assert NumberSettings.from_environment(second).llm.timeout_seconds == 90
     assert dict(os.environ) == original
@@ -80,8 +67,8 @@ def test_missing_agent_file_fails_without_loading_other_configuration(run_direct
 
 def test_environment_file_values_do_not_expand_process_variables(run_directory):
     path = run_directory / "literal.env"
-    path.write_text("LLM_COMMAND='${HOME}/codex'\n")
-    assert read_environment(path)["LLM_COMMAND"] == "${HOME}/codex"
+    path.write_text("GAME_CATALOG='${HOME}/games.json'\n")
+    assert read_environment(path)["GAME_CATALOG"] == "${HOME}/games.json"
 
 
 def test_main_agent_configuration_uses_independent_llm_and_speech(run_directory):
@@ -90,7 +77,7 @@ def test_main_agent_configuration_uses_independent_llm_and_speech(run_directory)
         "DASHSCOPE_API_KEY=config-validation\n"
         "DASHSCOPE_BASE_URL=https://workspace.example.com/compatible-mode/v1\n"
         "GAME_CATALOG=games.json\n"
-        "LLM_PROVIDER=openai\nLLM_API_KEY=main-config-validation\n"
+        "LLM_API_KEY=main-config-validation\n"
         "LLM_BASE_URL=https://api.deepseek.com\nLLM_MODEL_NAME=deepseek-flash\n"
     )
     settings = Settings.from_environment(path)
@@ -105,9 +92,13 @@ def test_main_agent_configuration_uses_independent_llm_and_speech(run_directory)
     assert settings.llm.base_url == "https://api.deepseek.com"
     assert settings.llm.model_name == "deepseek-flash"
     game_path = run_directory / "game.env"
-    game_path.write_text("LLM_PROVIDER=codex\n")
-    assert NumberSettings.from_environment(game_path).llm.provider == "codex"
-    game_path.write_text("LLM_PROVIDER=claude_code\n")
+    game_path.write_text(
+        "LLM_BASE_URL=https://api.deepseek.com\nLLM_API_KEY=game-config-validation\n"
+        "LLM_MODEL_NAME=game-model\n"
+    )
+    game = NumberSettings.from_environment(game_path)
+    assert game.llm.api_key == "game-config-validation"
+    assert game.llm.model_name == "game-model"
     assert Settings.from_environment(path) == settings
 
 
@@ -123,6 +114,7 @@ def test_main_agent_requires_its_own_llm_configuration(run_directory):
     {"input_gain": 0}, {"input_gain": 9}, {"tts_voice": ""}, {"asr_model": ""},
 ])
 def test_main_agent_rejects_invalid_speech_parameters(parameters):
+    llm = LLMSettings(api_key="config-validation", base_url="https://api.deepseek.com",
+                      model_name="deepseek-flash")
     with pytest.raises(ValueError):
-        Settings(dashscope_api_key="config-validation", llm=LLMSettings(provider="codex"),
-                 **parameters)
+        Settings(dashscope_api_key="config-validation", llm=llm, **parameters)

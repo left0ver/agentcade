@@ -12,7 +12,7 @@ from robot_agents.protocol import (
     Presentation,
     PublicState,
 )
-from robot_agents.providers import create_provider
+from robot_agents.providers import OpenAIProvider
 from robot_agents.tools import NoInput, Tool, ToolRegistry, original_text_input
 from robot_agents.vector import encode_vector
 
@@ -35,7 +35,7 @@ class GameAgent:
 
     def __init__(self, settings):
         self.game = Game()
-        self.provider = create_provider(settings.llm)
+        self.provider = OpenAIProvider(settings.llm)
         self.generator = AnimalGenerator(settings)
         self.judge = JevJudge(settings)
         self.estimate = settings.drawing_estimate_seconds
