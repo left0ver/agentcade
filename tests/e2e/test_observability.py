@@ -74,6 +74,7 @@ def test_real_speech_turns_record_tools_and_a2a_exchange(run_directory):
     assert "猜数字" in started["payload"]["text"] and "结束" in ended["payload"]["text"]
     for user, action, tool in ((started, "start", "start_game"), (ended, "end", "end_game")):
         assert 0.5 < user["time"] - user["payload"]["spoken_at"] < 15
+        assert user["payload"]["spoken_at"] < user["payload"]["speech_ended_at"] <= user["time"]
         turn = [event for event in events if event["turn_id"] == user["turn_id"]]
         main_call, = [event for event in turn
                       if event["type"] == "tool.call" and event["actor"] == "main"]

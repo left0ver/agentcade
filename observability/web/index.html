@@ -634,8 +634,13 @@ function inspect(row) {
   if (row.group.index) facts.push(["轮次", `第 ${row.group.index} 轮`]);
   if (row.duration !== null) facts.push(["耗时", millis(row.duration)]);
   if (row.kind === "user" && data.spoken_at) {
-    facts.push(["开始说话", clock(data.spoken_at, true)],
-      ["说话到识别完成", millis((row.time - data.spoken_at) * 1000)]);
+    facts.push(["开始说话", clock(data.spoken_at, true)]);
+    if (data.speech_ended_at) {
+      // 把这段时间拆成两部分：识别服务判定的说话时长，以及说完之后等到最终结果的时间。
+      facts.push(["说话时长", millis((data.speech_ended_at - data.spoken_at) * 1000)],
+        ["说完到识别完成", millis((row.time - data.speech_ended_at) * 1000)]);
+    }
+    facts.push(["说话到识别完成", millis((row.time - data.spoken_at) * 1000)]);
   }
   if (row.kind === "a2a-in" && row.offset !== null) facts.push(["距请求发出", millis(row.offset)]);
   if (row.kind === "reply" && row.offset !== null) facts.push(["距用户说完", millis(row.offset)]);

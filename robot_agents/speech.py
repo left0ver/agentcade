@@ -17,6 +17,7 @@ from robot_agents.config import Settings
 class RecognizedSpeech:
     text: str
     started_at: float
+    ended_at: float | None = None
 
 
 class SpeechTimeline:
@@ -29,6 +30,12 @@ class SpeechTimeline:
             raise ValueError("ASR 输入必须包含完整的 16-bit PCM 采样")
         self.frames.append((self.sent_samples / 16, frame.captured_at, frame.muted))
         self.sent_samples += len(frame.data) // 2
+
+    def captured_at(self, position: float) -> float:
+        offset, captured_at, _ = next(
+            item for item in reversed(self.frames) if item[0] <= position
+        )
+        return captured_at + (position - offset) / 1000
 
     def started_at(self, begin: float, end: float) -> float | None:
         if not self.frames or begin < self.frames[0][0] or end < begin:
@@ -221,7 +228,9 @@ class QwenSpeech:
                         continue
                     started_at = timeline.started_at(sentence["begin_time"], sentence["end_time"])
                     if started_at is not None:
-                        on_result(RecognizedSpeech(text, started_at))
+                        on_result(RecognizedSpeech(
+                            text, started_at, timeline.captured_at(sentence["end_time"]),
+                        ))
 
             async with asyncio.TaskGroup() as group:
                 group.create_task(send_audio())

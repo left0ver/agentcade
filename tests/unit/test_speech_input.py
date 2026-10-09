@@ -11,6 +11,8 @@ def test_sentence_time_tracks_capture_across_microphone_restart():
     timeline.append(CapturedPcm(bytes(640), 105.0, False))
     assert timeline.started_at(5, 30) == pytest.approx(100.005)
     assert timeline.started_at(45, 60) == pytest.approx(105.005)
+    assert timeline.captured_at(30) == pytest.approx(100.03)
+    assert timeline.captured_at(60) == pytest.approx(105.02)
 
 
 @pytest.mark.parametrize("begin,end", [(5, 40), (20, 40), (25, 60)])

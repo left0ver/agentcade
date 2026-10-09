@@ -115,7 +115,9 @@ class ScriptedSpeech:
     async def transcribe(self, audio, on_result, *, on_activity, ready, hotwords=()):
         ready.set()
         while (text := await self.utterances.get()) is not None:
-            on_result(RecognizedSpeech(text, time.monotonic()))
+            # 起止时间只相差几毫秒，避免把这句话算到上一轮改变游戏状态之前。
+            now = time.monotonic()
+            on_result(RecognizedSpeech(text, now - 0.004, now - 0.001))
 
 
 class SilentMicrophone:
@@ -231,6 +233,10 @@ def test_speech_turns_keep_late_game_results_with_the_turn_that_started_them(run
     events = recorded(since)
     turns = [event for event in events if event["type"] == "user.input"]
     assert [event["payload"]["text"] for event in turns] == ["开始游戏", "好了吗", "你好"]
+    for event in turns:
+        payload = event["payload"]
+        assert payload["speech_ended_at"] - payload["spoken_at"] == pytest.approx(0.003, abs=0.0005)
+        assert 0 < event["time"] - payload["speech_ended_at"] < 0.2
     first, second, chat = (
         [(item["type"], item["actor"], item["payload"].get("tool")) for item in events
          if item["turn_id"] == event["turn_id"]]
