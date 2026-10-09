@@ -10,14 +10,14 @@
   color-scheme: light dark;
   --bg: #ffffff; --panel: #f7f7f8; --border: #e4e4e7; --text: #1c1c1f; --muted: #777783;
   --hover: #f1f1f3; --selected: #e8f0ff; --accent: #2f62e8; --error: #c9302c; --ok: #19874a;
-  --user: #2f62e8; --tool: #7446d4; --subtool: #0c8585; --a2a: #a86400; --reply: #19874a;
+  --user: #2f62e8; --main-tool: #7446d4; --game-tool: #0c8585; --a2a: #a86400; --reply: #19874a;
   --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 }
 @media (prefers-color-scheme: dark) {
   :root {
     --bg: #141416; --panel: #1a1a1d; --border: #2a2a2f; --text: #e6e6ea; --muted: #8b8b97;
     --hover: #202024; --selected: #1c2740; --accent: #7ea4ff; --error: #ff6f66; --ok: #4dc480;
-    --user: #7ea4ff; --tool: #b294ff; --subtool: #4fcfcf; --a2a: #e0a340; --reply: #4dc480;
+    --user: #7ea4ff; --main-tool: #b294ff; --game-tool: #4fcfcf; --a2a: #e0a340; --reply: #4dc480;
   }
 }
 * { box-sizing: border-box; }
@@ -96,8 +96,8 @@ main { flex: 1; display: flex; min-height: 0; }
 }
 .kind-user { --kind: var(--user); }
 .kind-reply { --kind: var(--reply); }
-.kind-tool { --kind: var(--tool); }
-.kind-subtool { --kind: var(--subtool); }
+.kind-main-tool { --kind: var(--main-tool); }
+.kind-game-tool { --kind: var(--game-tool); }
 .kind-a2a-out, .kind-a2a-in { --kind: var(--a2a); }
 .c-summary { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .c-kind { position: relative; align-self: stretch; display: flex; align-items: center; }
@@ -161,7 +161,7 @@ main { flex: 1; display: flex; min-height: 0; }
 .block.error { color: var(--error); }
 .j-entry, .j-node > .j-children { padding-left: 14px; }
 .j-node > summary { cursor: pointer; }
-.j-key { color: var(--tool); }
+.j-key { color: var(--main-tool); }
 .j-string { color: var(--ok); }
 .j-number, .j-boolean { color: var(--accent); }
 .j-null, .j-count { color: var(--muted); }
@@ -217,7 +217,7 @@ main { flex: 1; display: flex; min-height: 0; }
 <script>
 const $ = (id) => document.getElementById(id);
 const KINDS = {
-  user: "用户", reply: "主 Agent · 回复", tool: "主 Agent · 工具", subtool: "游戏 Agent · 工具",
+  user: "用户", reply: "主 Agent · 回复", "main-tool": "主 Agent · 工具", "game-tool": "游戏 Agent · 工具",
   "a2a-out": "A2A →", "a2a-in": "A2A ←",
 };
 const STATUS = { running: "运行中", ok: "已完成", error: "失败", cancelled: "已取消", lost: "中断" };
@@ -293,7 +293,7 @@ function summary(row) {
     if (request.revision !== null && request.revision !== undefined) parts.push(`版本 ${request.revision}`);
     return [[parts.join(" · "), ""], [request.text ? ` · “${request.text}”` : "", "dim"]];
   }
-  const parts = row.kind === "subtool" ? [[`${gameName(row.actor)} · `, "dim"]] : [];
+  const parts = row.kind === "game-tool" ? [[`${gameName(row.actor)} · `, "dim"]] : [];
   parts.push([data.tool, "name"], [argumentsText(data.arguments), "args"]);
   if (row.status === "ok") parts.push([" → ", "arrow"], [resultText(data.result), ""]);
   if (row.status === "error") parts.push([" → ", "arrow"], [data.error, "err"]);
@@ -309,7 +309,7 @@ function title(row) {
   if (row.kind === "a2a-in") {
     return data.cancelled ? "请求已取消" : data.error ? "请求失败" : data.final ? "最终结果" : "进度消息";
   }
-  return row.kind === "subtool" ? `${gameName(row.actor)} · ${data.tool}` : data.tool;
+  return row.kind === "game-tool" ? `${gameName(row.actor)} · ${data.tool}` : data.tool;
 }
 
 function timeCell(row) {
@@ -428,7 +428,7 @@ function timeline(group, ended) {
   const span = Math.max(ended - group.time, 0.001);
   for (const row of group.rows) {
     const start = Math.max(row.time - group.time, 0);
-    const spanned = ["tool", "subtool", "a2a-out"].includes(row.kind);
+    const spanned = ["main-tool", "game-tool", "a2a-out"].includes(row.kind);
     const end = row.duration === null ? ended - group.time : start + row.duration / 1000;
     row.bar.className = spanned ? (row.duration === null ? "bar open" : "bar") : "bar point";
     row.bar.style.left = `${Math.min(start / span, 1) * 100}%`;
@@ -449,7 +449,7 @@ const handlers = {
   },
   "tool.call"(event) {
     const row = addRow(event, {
-      kind: event.actor === "main" ? "tool" : "subtool", depth: event.parent_id ? 1 : 0,
+      kind: event.actor === "main" ? "main-tool" : "game-tool", depth: event.parent_id ? 1 : 0,
       status: "running", data: { ...event.payload }, id: event.payload.call_id, parent: event.parent_id,
     });
     state.calls.set(event.payload.call_id, row);
@@ -642,7 +642,7 @@ function inspect(row) {
   const sections = [];
   if (row.kind === "user") sections.push(section("ASR 识别结果", el("div", "block text", data.text)));
   if (row.kind === "reply") sections.push(section("回复文字", el("div", "block text", data.text)));
-  if (row.kind === "tool" || row.kind === "subtool") {
+  if (row.kind === "main-tool" || row.kind === "game-tool") {
     sections.push(section("参数", jsonBlock(data.arguments)));
     if (row.status === "ok") sections.push(section("返回", jsonBlock(data.result)));
   }
