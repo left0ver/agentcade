@@ -6,6 +6,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, create_model
 
+import observability
+
 
 class ToolInput(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
@@ -57,11 +59,13 @@ class ToolRegistry:
         async with self.lock:
             if self.completed.is_set():
                 raise ValueError("当前工具调用轮次已经结束")
-            tool = self.tools[name]
-            inputs = tool.inputs.model_validate(arguments)
-            result = await tool.handler(**inputs.model_dump())
-            # 在工具执行位置验证返回值可以通过模型接口传输。
-            json.dumps(result, ensure_ascii=False, allow_nan=False)
+            with observability.tool_call(name, arguments) as outcome:
+                tool = self.tools[name]
+                inputs = tool.inputs.model_validate(arguments)
+                result = await tool.handler(**inputs.model_dump())
+                # 在工具执行位置验证返回值可以通过模型接口传输。
+                json.dumps(result, ensure_ascii=False, allow_nan=False)
+                outcome["result"] = result
             self.calls.append({"name": name, "arguments": arguments, "result": result})
             if name in self.terminal:
                 self.completed.set()

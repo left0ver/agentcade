@@ -1,6 +1,7 @@
 import asyncio
 from contextlib import aclosing
 
+from observability.server import serve
 from robot_agents.main_agent import MainAgent
 from robot_agents.microphone import MicrophoneInput
 from robot_agents.output import OutputCoordinator
@@ -63,5 +64,9 @@ class RobotApplication:
 
 
 async def run_application(app, settings):
-    async with connect_games(settings.game_catalog) as games:
+    async with (
+        serve(settings.observability_port) as url,
+        connect_games(settings.game_catalog) as games,
+    ):
+        app.logger.info("可观测性页面：%s", url)
         await RobotApplication(app, settings, games).run()

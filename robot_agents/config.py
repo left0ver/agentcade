@@ -66,6 +66,7 @@ class Settings:
     speech_timeout_seconds: int = 90
     asr_silence_ms: int = 800
     input_gain: float = 4.0
+    observability_port: int = 8765
 
     def __post_init__(self) -> None:
         for name in (
@@ -83,6 +84,8 @@ class Settings:
             raise ValueError("ASR_SILENCE_MS 必须在 200 至 6000 之间")
         if not 1 <= self.input_gain <= 8:
             raise ValueError("ASR_INPUT_GAIN 必须在 1 至 8 之间")
+        if not 1 <= self.observability_port <= 65535:
+            raise ValueError("OBSERVABILITY_PORT 必须在 1 至 65535 之间")
 
     @property
     def websocket_url(self) -> str:
@@ -110,4 +113,5 @@ class Settings:
             speech_timeout_seconds=int(values.get("SPEECH_TIMEOUT_SECONDS", "90")),
             asr_silence_ms=int(values.get("ASR_SILENCE_MS", "800")),
             input_gain=float(values.get("ASR_INPUT_GAIN", "4")),
+            observability_port=int(values.get("OBSERVABILITY_PORT", "8765")),
         )

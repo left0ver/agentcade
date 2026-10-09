@@ -33,6 +33,7 @@ from sse_starlette.sse import EventSourceResponse
 from starlette.applications import Starlette
 from starlette.routing import Route
 
+import observability
 from robot_agents.protocol import (
     PROTOCOL_VERSION,
     GameDescriptor,
@@ -132,7 +133,8 @@ class GameExecutor(AgentExecutor):
             if self.agent is None or self.context_id != key[0]:
                 raise ValueError("游戏会话已经结束或不匹配")
             agent = self.agent
-            result = await agent.handle(request, publish)
+            with observability.game_request(self.factory.descriptor.id, request.request_id):
+                result = await agent.handle(request, publish)
             results.append(result)
             if not result.state.active:
                 self.agent = None
@@ -261,47 +263,51 @@ class GameConnection:
         )
         result = None
         completed = False
-        async for event in self.client.send_message(SendMessageRequest(message=message)):
-            if event.HasField("message"):
-                reply = event.message
-                parts = reply.parts
-                completed = True
-            elif event.HasField("task"):
-                reply = event.task
-                self.check_status(reply.status.state)
-                if reply.context_id != context_id:
-                    raise ValueError("游戏响应会话不匹配")
-                if reply.status.state != TaskState.TASK_STATE_COMPLETED:
-                    continue
-                completed = True
-                parts = [part for artifact in reply.artifacts for part in artifact.parts]
-            elif event.HasField("status_update"):
-                reply = event.status_update
-                if reply.context_id != context_id:
-                    raise ValueError("游戏响应会话不匹配")
-                self.check_status(reply.status.state)
-                if reply.status.state == TaskState.TASK_STATE_COMPLETED:
+        with observability.a2a_request(self.descriptor, context_id, request) as exchange:
+            async for event in self.client.send_message(SendMessageRequest(message=message)):
+                if event.HasField("message"):
+                    reply = event.message
+                    parts = reply.parts
                     completed = True
-                    continue
-                if not reply.status.HasField("message"):
-                    continue
-                parts = reply.status.message.parts
-            elif event.HasField("artifact_update"):
-                reply = event.artifact_update
-                if reply.append:
-                    raise ValueError("游戏结果必须包含完整结构化数据")
-                parts = reply.artifact.parts
-            else:
-                raise ValueError("游戏接口返回了未知事件")
-            if reply.context_id != context_id or len(parts) != 1:
-                raise ValueError("游戏响应会话或数据数量不匹配")
-            if not parts[0].HasField("data"):
-                raise ValueError("游戏响应必须包含唯一结构化结果")
-            result = GameResult.model_validate(MessageToDict(parts[0].data))
-            if on_update is not None and event.HasField("status_update"):
-                await on_update(result)
-        if result is None or not completed:
-            raise ValueError("游戏 Agent 没有返回完整结果")
+                elif event.HasField("task"):
+                    reply = event.task
+                    self.check_status(reply.status.state)
+                    if reply.context_id != context_id:
+                        raise ValueError("游戏响应会话不匹配")
+                    if reply.status.state != TaskState.TASK_STATE_COMPLETED:
+                        continue
+                    completed = True
+                    parts = [part for artifact in reply.artifacts for part in artifact.parts]
+                elif event.HasField("status_update"):
+                    reply = event.status_update
+                    if reply.context_id != context_id:
+                        raise ValueError("游戏响应会话不匹配")
+                    self.check_status(reply.status.state)
+                    if reply.status.state == TaskState.TASK_STATE_COMPLETED:
+                        completed = True
+                        continue
+                    if not reply.status.HasField("message"):
+                        continue
+                    parts = reply.status.message.parts
+                elif event.HasField("artifact_update"):
+                    reply = event.artifact_update
+                    if reply.append:
+                        raise ValueError("游戏结果必须包含完整结构化数据")
+                    parts = reply.artifact.parts
+                else:
+                    raise ValueError("游戏接口返回了未知事件")
+                if reply.context_id != context_id or len(parts) != 1:
+                    raise ValueError("游戏响应会话或数据数量不匹配")
+                if not parts[0].HasField("data"):
+                    raise ValueError("游戏响应必须包含唯一结构化结果")
+                result = GameResult.model_validate(MessageToDict(parts[0].data))
+                if event.HasField("status_update"):
+                    exchange.update(result)
+                    if on_update is not None:
+                        await on_update(result)
+            if result is None or not completed:
+                raise ValueError("游戏 Agent 没有返回完整结果")
+            exchange.result = result
         if on_update is not None:
             await on_update(result)
         return result

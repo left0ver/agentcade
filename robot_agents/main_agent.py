@@ -8,6 +8,7 @@ from uuid import uuid4
 
 from pydantic import Field, create_model
 
+import observability
 from robot_agents.config import Settings
 from robot_agents.protocol import ExpectedInput, GameRequest, GameResult, Presentation, PublicState
 from robot_agents.providers import OpenAIProvider
@@ -109,6 +110,10 @@ class MainAgent:
         self.outputs.put_nowait(OutputRequest(outputs, context_id, result, completion))
         return completion
 
+    async def reply(self, text):
+        observability.reply(text)
+        return await self.emit([Presentation(text=text)])
+
     async def receive(self, text, *, started_at=None):
         timestamp = time.monotonic() if started_at is None else started_at
         context_id, revision = self.context_at(timestamp)
@@ -117,7 +122,7 @@ class MainAgent:
     async def receive_utterance(self, text, context_id, revision):
         async with self.input_lock:
             if context_id is not None and (self.active is None or context_id != self.active.context_id):
-                return await self.emit([Presentation(text="刚才那局已经结束了。你想说什么，再告诉我一次吧。")])
+                return await self.reply("刚才那局已经结束了。你想说什么，再告诉我一次吧。")
             completions = []
             registry = self.tools_for(text, context_id, revision, completions)
             response = await self.provider.run_tools(self.system_prompt(), {
@@ -130,7 +135,7 @@ class MainAgent:
             if completions:
                 return completions[-1]
             if response:
-                return await self.emit([Presentation(text=response)])
+                return await self.reply(response)
             return None
 
     def tools_for(self, utterance, context_id, revision, completions):

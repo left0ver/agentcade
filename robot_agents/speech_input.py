@@ -3,6 +3,7 @@ import time
 from collections import deque
 from contextlib import aclosing
 
+import observability
 from robot_agents.audio_stream import CapturedPcm, PcmInputGain
 from robot_agents.speech import QwenSpeech
 
@@ -33,7 +34,8 @@ class SpeechInput:
                 "started_at": message.started_at, "text": message.text,
             })
             self.logger.info("ASR 用户原话：%s", message.text)
-            messages.put_nowait((message, context))
+            turn_id = observability.user_input(message.text, message.started_at)
+            messages.put_nowait((message, context, turn_id))
 
         async def frames():
             async for frame in audio:
@@ -43,10 +45,11 @@ class SpeechInput:
 
         async def process():
             while True:
-                message, context = await messages.get()
+                message, context, turn_id = await messages.get()
                 try:
                     await self.microphone.pause(owner=self)
-                    completion = await self.agent.receive_utterance(message.text, *context)
+                    with observability.turn(turn_id):
+                        completion = await self.agent.receive_utterance(message.text, *context)
                     if completion is not None:
                         await asyncio.shield(completion)
                 finally:

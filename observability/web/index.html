@@ -1,0 +1,686 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>轨迹 · 桌面机器人</title>
+<link rel="icon" href="data:,">
+<style>
+:root {
+  color-scheme: light dark;
+  --bg: #ffffff; --panel: #f7f7f8; --border: #e4e4e7; --text: #1c1c1f; --muted: #777783;
+  --hover: #f1f1f3; --selected: #e8f0ff; --accent: #2f62e8; --error: #c9302c; --ok: #19874a;
+  --user: #2f62e8; --tool: #7446d4; --subtool: #0c8585; --a2a: #a86400; --reply: #19874a;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #141416; --panel: #1a1a1d; --border: #2a2a2f; --text: #e6e6ea; --muted: #8b8b97;
+    --hover: #202024; --selected: #1c2740; --accent: #7ea4ff; --error: #ff6f66; --ok: #4dc480;
+    --user: #7ea4ff; --tool: #b294ff; --subtool: #4fcfcf; --a2a: #e0a340; --reply: #4dc480;
+  }
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { height: 100%; margin: 0; }
+body {
+  display: flex; flex-direction: column; background: var(--bg); color: var(--text);
+  font: 13px/20px -apple-system, BlinkMacSystemFont, "PingFang SC", "Segoe UI", sans-serif;
+}
+button { font: inherit; color: inherit; }
+
+.toolbar {
+  display: flex; align-items: center; gap: 14px; height: 44px; padding: 0 14px; flex: none;
+  border-bottom: 1px solid var(--border); background: var(--panel);
+}
+.toolbar .title { font-weight: 600; }
+.toolbar .title span { margin-left: 6px; font-weight: 400; color: var(--muted); }
+.status { display: flex; align-items: center; gap: 6px; color: var(--muted); }
+.dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); }
+.status.live .dot { background: var(--ok); }
+.status.down .dot { background: var(--error); }
+.counts { color: var(--muted); font-variant-numeric: tabular-nums; }
+.spacer { flex: 1; }
+.toolbar button {
+  height: 26px; padding: 0 10px; border: 1px solid var(--border); border-radius: 6px;
+  background: var(--bg); cursor: pointer;
+}
+.toolbar button:hover { background: var(--hover); }
+.toolbar input {
+  width: 200px; height: 26px; padding: 0 8px; border: 1px solid var(--border); border-radius: 6px;
+  background: var(--bg); color: inherit; font: inherit;
+}
+
+main { flex: 1; display: flex; min-height: 0; }
+.ledger { position: relative; flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.columns, .row {
+  display: grid; grid-template-columns: 52px 136px minmax(0, 1fr) 168px 104px; align-items: center;
+}
+.columns {
+  flex: none; height: 28px; padding: 0 12px; color: var(--muted); font-size: 12px;
+  border-bottom: 1px solid var(--border);
+}
+.columns span:last-child, .c-time { text-align: right; }
+.scroll { flex: 1; overflow-y: auto; padding-bottom: 48px; }
+.empty { padding: 56px 16px; text-align: center; color: var(--muted); }
+
+.group-head {
+  display: flex; align-items: center; gap: 8px; width: 100%; height: 30px; padding: 0 12px;
+  border: 0; border-top: 1px solid var(--border); border-left: 3px solid var(--accent);
+  background: var(--panel); text-align: left; cursor: pointer;
+  position: sticky; top: 0; z-index: 1;
+}
+.group:first-child .group-head { border-top: 0; }
+.group.between .group-head, .group.orphan .group-head { border-left-color: var(--border); }
+.chevron { width: 10px; color: var(--muted); transition: transform .12s; }
+.group.collapsed .chevron { transform: rotate(-90deg); }
+.group.collapsed .group-body { display: none; }
+.group-title { font-weight: 600; }
+.group-time, .group-state, .group-text { color: var(--muted); font-variant-numeric: tabular-nums; }
+.group-text { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.group:not(.collapsed) .group-text { visibility: hidden; }
+.group-state { margin-left: auto; white-space: nowrap; }
+.divider {
+  padding: 6px 12px; text-align: center; font-size: 12px; color: var(--muted);
+  border-top: 1px dashed var(--border); border-bottom: 1px dashed var(--border);
+}
+
+.row { min-height: 30px; padding: 0 12px; cursor: pointer; outline: none; }
+.row:hover { background: var(--hover); }
+.row.selected { background: var(--selected); box-shadow: inset 2px 0 0 var(--accent); }
+.c-index { color: var(--muted); font: 12px/20px var(--mono); }
+.badge {
+  display: inline-block; padding: 0 6px; border-radius: 4px; font-size: 11px; line-height: 18px;
+  white-space: nowrap; color: var(--kind);
+  background: color-mix(in srgb, var(--kind) 13%, transparent);
+}
+.kind-user { --kind: var(--user); }
+.kind-reply { --kind: var(--reply); }
+.kind-tool { --kind: var(--tool); }
+.kind-subtool { --kind: var(--subtool); }
+.kind-a2a-out, .kind-a2a-in { --kind: var(--a2a); }
+.c-summary { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.c-kind { position: relative; align-self: stretch; display: flex; align-items: center; }
+.depth-1 .c-kind { padding-left: 18px; }
+.depth-1 .c-kind::before {
+  content: ""; position: absolute; left: 6px; top: 0; bottom: 0; border-left: 1px solid var(--border);
+}
+.name { font-family: var(--mono); font-weight: 600; }
+.args, .dim, .arrow { color: var(--muted); }
+.args { font-family: var(--mono); }
+.err { color: var(--error); }
+.c-time { color: var(--muted); font: 12px/20px var(--mono); white-space: nowrap; }
+.c-line { position: relative; align-self: stretch; margin: 0 12px; }
+.c-line::before {
+  content: ""; position: absolute; left: 0; right: 0; top: 50%; border-top: 1px solid var(--border);
+}
+.bar {
+  position: absolute; top: 50%; height: 6px; min-width: 2px; margin-top: -3px; border-radius: 2px;
+  background: var(--kind);
+}
+.bar.point { width: 2px; height: 10px; margin-top: -5px; }
+.bar.open { opacity: .45; }
+.c-time.failed { color: var(--error); }
+.row.fresh { animation: fresh 1.6s ease-out; }
+@keyframes fresh { from { background: color-mix(in srgb, var(--accent) 22%, transparent); } }
+.running { color: var(--accent); }
+.running::before {
+  content: ""; display: inline-block; width: 6px; height: 6px; margin-right: 6px;
+  border-radius: 50%; background: currentColor; animation: pulse 1.1s ease-in-out infinite;
+}
+@keyframes pulse { 50% { opacity: .25; } }
+@media (prefers-reduced-motion: reduce) { .running::before, .row.fresh { animation: none; } }
+
+.tail {
+  position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); height: 28px;
+  padding: 0 12px; border: 1px solid var(--border); border-radius: 14px; background: var(--bg);
+  box-shadow: 0 2px 10px rgb(0 0 0 / .14); cursor: pointer;
+}
+
+.inspector {
+  flex: none; width: 38%; min-width: 340px; max-width: 720px; overflow-y: auto;
+  border-left: 1px solid var(--border); background: var(--panel);
+}
+.inspector .placeholder { padding: 56px 16px; text-align: center; color: var(--muted); }
+.i-head { display: flex; align-items: center; gap: 8px; padding: 12px 16px 4px; }
+.i-title { font-weight: 600; overflow-wrap: anywhere; }
+.i-status { margin-left: auto; white-space: nowrap; color: var(--muted); }
+.i-status.error { color: var(--error); }
+.facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 2px 14px;
+  margin: 0; padding: 8px 16px 12px; }
+.facts dt { color: var(--muted); }
+.facts dd { margin: 0; font-family: var(--mono); font-size: 12px; overflow-wrap: anywhere; }
+.section { border-top: 1px solid var(--border); padding: 10px 16px 12px; }
+.section h3 { margin: 0 0 6px; font-size: 12px; font-weight: 600; color: var(--muted); }
+.block {
+  margin: 0; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px;
+  background: var(--bg); font: 12px/19px var(--mono); white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.block.text { font-family: inherit; font-size: 13px; }
+.block.error { color: var(--error); }
+.j-entry, .j-node > .j-children { padding-left: 14px; }
+.j-node > summary { cursor: pointer; }
+.j-key { color: var(--tool); }
+.j-string { color: var(--ok); }
+.j-number, .j-boolean { color: var(--accent); }
+.j-null, .j-count { color: var(--muted); }
+.more { margin-left: 6px; padding: 0 4px; border: 0; background: none; color: var(--accent);
+  cursor: pointer; font: inherit; }
+.raw > summary { cursor: pointer; font-size: 12px; font-weight: 600; color: var(--muted); }
+.raw .more { float: right; margin: 0; }
+.raw .block { margin-top: 8px; }
+
+@media (max-width: 1200px) {
+  .columns, .row { grid-template-columns: 52px 136px minmax(0, 1fr) 104px; }
+  .columns .line-head, .c-line { display: none; }
+}
+@media (max-width: 900px) {
+  main { flex-direction: column; }
+  .inspector { width: auto; min-width: 0; max-width: none; height: 46%;
+    border-left: 0; border-top: 1px solid var(--border); }
+}
+</style>
+</head>
+<body>
+<header class="toolbar">
+  <div class="title">轨迹<span>桌面机器人</span></div>
+  <div class="status" id="status"><i class="dot"></i><span>连接中</span></div>
+  <div class="counts" id="counts"></div>
+  <div class="spacer"></div>
+  <input id="search" type="search" placeholder="搜索" aria-label="搜索记录">
+  <button id="collapse" type="button">收起所有轮次</button>
+  <button id="clear" type="button">清空</button>
+</header>
+<main>
+  <section class="ledger">
+    <div class="columns"><span>#</span><span>类型</span><span>内容</span><span class="line-head">时间线</span><span>时间</span></div>
+    <div class="scroll" id="scroll">
+      <div class="empty" id="empty">等待用户说话…</div>
+    </div>
+    <button class="tail" id="tail" type="button" hidden>↓ 回到末尾</button>
+  </section>
+  <aside class="inspector" id="inspector"></aside>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+const KINDS = {
+  user: "用户", reply: "主 Agent · 回复", tool: "主 Agent · 工具", subtool: "游戏 Agent · 工具",
+  "a2a-out": "A2A →", "a2a-in": "A2A ←",
+};
+const STATUS = { running: "运行中", ok: "已完成", error: "失败", cancelled: "已取消", lost: "中断" };
+const outcome = (payload) => (payload.ok ? "ok" : payload.cancelled ? "cancelled" : "error");
+const LIMIT = 3000;
+const rowOf = new WeakMap();
+const state = {
+  runId: null, cursor: "", turnCount: 0, rowCount: 0, groups: [], rows: [], selected: null, follow: true,
+  collapsed: false,
+  turns: new Map(), calls: new Map(), requests: new Map(), games: new Map(),
+};
+
+function el(tag, className, text) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text !== undefined) node.textContent = text;
+  return node;
+}
+const clock = (seconds, precise) => {
+  const date = new Date(seconds * 1000);
+  const text = date.toLocaleTimeString("zh-CN", { hour12: false });
+  return precise ? `${text}.${String(date.getMilliseconds()).padStart(3, "0")}` : text;
+};
+const millis = (value) => `${Math.round(value).toLocaleString("en-US")} ms`;
+const short = (text, limit = 80) => (text.length > limit ? `${text.slice(0, limit)}…` : text);
+const gameName = (id) => state.games.get(id) || id;
+const actorName = (actor) => ({ user: "用户", main: "主 Agent" })[actor] || `${gameName(actor)}（${actor}）`;
+
+function argumentsText(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return `(${short(JSON.stringify(value) ?? "")})`;
+  return `(${Object.entries(value).map(([key, item]) => `${key}=${short(JSON.stringify(item), 48)}`).join(", ")})`;
+}
+
+function resultText(result) {
+  if (result === null || result === undefined) return "";
+  if (typeof result !== "object") return String(result);
+  if (Array.isArray(result)) return `${result.length} 项`;
+  if (result.message) return result.message;
+  if (Array.isArray(result.messages) && result.messages.length) return result.messages.join(" ");
+  const parts = [];
+  if (result.delivered) parts.push("已送达");
+  if (result.state?.phase) parts.push(result.state.phase);
+  if (result.state?.status) parts.push(result.state.status);
+  return parts.length ? parts.join(" · ") : short(JSON.stringify(result));
+}
+
+function exchangeText(data) {
+  if (data.cancelled) return [["已取消", "dim"]];
+  if (data.error) return [["失败 · ", "err"], [data.error, "err"]];
+  const result = data.result || {};
+  const outputs = result.outputs || [];
+  const parts = [data.final ? "完成" : "进度"];
+  if (result.state?.phase) parts.push(result.state.phase);
+  if (result.expected_input?.kind) parts.push(`期望 ${result.expected_input.kind}`);
+  if (outputs.some((item) => item.paths?.length)) parts.push("图案");
+  const spoken = outputs.map((item) => item.text).filter(Boolean).join(" ");
+  return [[parts.join(" · "), "dim"], [spoken ? ` · “${spoken}”` : "", ""]];
+}
+
+function summary(row) {
+  const data = row.data;
+  if (row.kind === "user" || row.kind === "reply") return [[data.text, ""]];
+  if (row.kind === "a2a-in") return exchangeText(data);
+  if (row.kind === "a2a-out") {
+    const request = data.request || {};
+    const parts = [data.game_name, request.action];
+    if (request.revision !== null && request.revision !== undefined) parts.push(`版本 ${request.revision}`);
+    return [[parts.join(" · "), ""], [request.text ? ` · “${request.text}”` : "", "dim"]];
+  }
+  const parts = row.kind === "subtool" ? [[`${gameName(row.actor)} · `, "dim"]] : [];
+  parts.push([data.tool, "name"], [argumentsText(data.arguments), "args"]);
+  if (row.status === "ok") parts.push([" → ", "arrow"], [resultText(data.result), ""]);
+  if (row.status === "error") parts.push([" → ", "arrow"], [data.error, "err"]);
+  if (row.status === "cancelled") parts.push([" → ", "arrow"], ["已取消", "dim"]);
+  return parts;
+}
+
+function title(row) {
+  const data = row.data;
+  if (row.kind === "user") return "用户输入";
+  if (row.kind === "reply") return "主 Agent 回复";
+  if (row.kind === "a2a-out") return `${data.game_name} · ${data.request?.action ?? ""}`;
+  if (row.kind === "a2a-in") {
+    return data.cancelled ? "请求已取消" : data.error ? "请求失败" : data.final ? "最终结果" : "进度消息";
+  }
+  return row.kind === "subtool" ? `${gameName(row.actor)} · ${data.tool}` : data.tool;
+}
+
+function timeCell(row) {
+  if (row.status === "running") return ["运行中", "c-time running"];
+  if (row.status === "lost") return ["中断", "c-time"];
+  if (row.duration !== null) return [millis(row.duration), row.status === "error" ? "c-time failed" : "c-time"];
+  if (row.offset !== null) return [`+${millis(row.offset)}`, "c-time"];
+  return [clock(row.time), "c-time"];
+}
+
+function addGroup(kind, time) {
+  const group = { kind, time, rows: [], index: kind === "turn" ? ++state.turnCount : null };
+  group.node = el("section", `group ${kind}`);
+  const head = el("button", "group-head");
+  head.type = "button";
+  const label = { turn: `第 ${group.index} 轮`, between: "轮次之间", orphan: "更早的轮次" }[kind];
+  group.state = el("span", "group-state");
+  group.text = el("span", "group-text");
+  head.append(el("span", "chevron", "▾"), el("span", "group-title", label),
+    el("span", "group-time", clock(time)), group.text, group.state);
+  head.addEventListener("click", () => group.node.classList.toggle("collapsed"));
+  group.body = el("div", "group-body");
+  group.node.append(head, group.body);
+  if (state.collapsed) group.node.classList.add("collapsed");
+  $("empty").hidden = true;
+  $("scroll").append(group.node);
+  state.groups.push(group);
+  return group;
+}
+
+function groupFor(event) {
+  if (event.turn_id) {
+    let group = state.turns.get(event.turn_id);
+    if (!group) {
+      group = addGroup(event.type === "user.input" ? "turn" : "orphan", event.time);
+      state.turns.set(event.turn_id, group);
+    }
+    return group;
+  }
+  const last = state.groups[state.groups.length - 1];
+  return last && last.kind === "between" ? last : addGroup("between", event.time);
+}
+
+function addRow(event, spec) {
+  const group = spec.group || groupFor(event);
+  const row = {
+    kind: spec.kind, depth: spec.depth || 0, status: spec.status || "none", data: spec.data,
+    duration: null, offset: spec.offset ?? null, time: event.time, actor: event.actor,
+    events: [event], group, index: ++state.rowCount,
+  };
+  // 刚发生的记录短暂高亮，方便看到较晚返回、插入到前面轮次的结果。
+  const fresh = Date.now() / 1000 - event.time < 3 ? " fresh" : "";
+  row.node = el("div", `row kind-${row.kind} depth-${row.depth}${fresh}`);
+  row.node.tabIndex = -1;
+  rowOf.set(row.node, row);
+  const kind = el("span", "c-kind");
+  kind.append(el("span", "badge", KINDS[row.kind]));
+  row.summary = el("span", "c-summary");
+  row.timing = el("span", "c-time");
+  row.bar = el("i", "bar");
+  const line = el("span", "c-line");
+  line.append(row.bar);
+  row.node.append(el("span", "c-index", `#${row.index}`), kind, row.summary, line, row.timing);
+  row.node.addEventListener("click", () => select(row));
+  group.rows.push(row);
+  state.rows.push(row);
+  group.body.append(row.node);
+  paint(row);
+  trim();
+  if (group === state.groups[state.groups.length - 1]) followTail();
+  return row;
+}
+
+function followTail() {
+  // 回放大量记录时每帧只滚动一次，避免逐条触发布局计算。
+  if (state.scrolling) return;
+  state.scrolling = true;
+  requestAnimationFrame(() => {
+    state.scrolling = false;
+    if (state.follow) $("scroll").scrollTop = $("scroll").scrollHeight;
+  });
+}
+
+function filter(rows) {
+  const query = $("search").value.trim().toLowerCase();
+  for (const row of rows) row.node.hidden = Boolean(query) && !row.text.includes(query);
+  for (const group of state.groups) {
+    group.node.hidden = Boolean(query) && group.rows.every((row) => row.node.hidden);
+  }
+}
+
+function paint(row) {
+  row.summary.replaceChildren(...summary(row).map(([text, name]) => el("span", name, text)));
+  row.summary.title = row.summary.textContent;
+  row.text = `${row.summary.textContent} ${JSON.stringify(row.events)}`.toLowerCase();
+  filter([row]);
+  [row.timing.textContent, row.timing.className] = timeCell(row);
+  const running = row.group.rows.filter((item) => item.status === "running").length;
+  // 一轮的耗时从用户说完算到这一轮最后一条记录。
+  const ended = Math.max(...row.group.rows.map((item) => item.events[item.events.length - 1].time));
+  const elapsed = row.group.kind === "turn" && row.group.rows.length > 1
+    ? ` · ${millis((ended - row.group.time) * 1000)}` : "";
+  row.group.state.textContent = running ? "运行中" : `${row.group.rows.length} 条${elapsed}`;
+  row.group.state.className = running ? "group-state running" : "group-state";
+  timeline(row.group, ended);
+  if (row.kind === "user") row.group.text.textContent = row.data.text;
+  const turns = state.groups.filter((group) => group.kind === "turn").length;
+  $("counts").textContent = `${turns} 轮 · ${state.rows.length} 条记录`;
+  if (state.selected === row) inspect(row);
+}
+
+function timeline(group, ended) {
+  // 每一行在本轮时间范围内的位置：调用和请求画成时间段，其余记录画成时间点。
+  const span = Math.max(ended - group.time, 0.001);
+  for (const row of group.rows) {
+    const start = Math.max(row.time - group.time, 0);
+    const spanned = ["tool", "subtool", "a2a-out"].includes(row.kind);
+    const end = row.duration === null ? ended - group.time : start + row.duration / 1000;
+    row.bar.className = spanned ? (row.duration === null ? "bar open" : "bar") : "bar point";
+    row.bar.style.left = `${Math.min(start / span, 1) * 100}%`;
+    row.bar.style.width = spanned ? `${Math.max(Math.min(end, span) - start, 0) / span * 100}%` : "";
+  }
+}
+
+const handlers = {
+  "user.input"(event) {
+    addRow(event, { kind: "user", data: event.payload });
+  },
+  "agent.reply"(event) {
+    const group = groupFor(event);
+    addRow(event, {
+      kind: "reply", group, data: event.payload,
+      offset: group.kind === "turn" ? (event.time - group.time) * 1000 : null,
+    });
+  },
+  "tool.call"(event) {
+    const row = addRow(event, {
+      kind: event.actor === "main" ? "tool" : "subtool", depth: event.parent_id ? 1 : 0,
+      status: "running", data: { ...event.payload },
+    });
+    state.calls.set(event.payload.call_id, row);
+  },
+  "tool.result"(event) {
+    const row = state.calls.get(event.payload.call_id);
+    if (!row) return;
+    row.events.push(event);
+    row.status = outcome(event.payload);
+    row.duration = event.payload.duration_ms;
+    Object.assign(row.data, {
+      result: event.payload.result, error: event.payload.error, cancelled: event.payload.cancelled,
+    });
+    paint(row);
+  },
+  "a2a.request"(event) {
+    state.games.set(event.payload.game_id, event.payload.game_name);
+    const row = addRow(event, {
+      kind: "a2a-out", depth: event.parent_id ? 1 : 0, status: "running", data: { ...event.payload },
+    });
+    state.requests.set(event.payload.request_id, row);
+  },
+  "a2a.update"(event) {
+    const origin = state.requests.get(event.payload.request_id);
+    addRow(event, {
+      kind: "a2a-in", depth: origin ? origin.depth : 1, group: origin?.group,
+      offset: origin ? (event.time - origin.time) * 1000 : null,
+      data: { ...event.payload, final: false, game_name: origin?.data.game_name },
+    });
+  },
+  "a2a.result"(event) {
+    const origin = state.requests.get(event.payload.request_id);
+    if (origin) {
+      origin.events.push(event);
+      origin.status = outcome(event.payload);
+      origin.duration = event.payload.duration_ms;
+      paint(origin);
+    }
+    addRow(event, {
+      kind: "a2a-in", depth: origin ? origin.depth : 1, group: origin?.group,
+      status: event.payload.ok ? "none" : outcome(event.payload), offset: event.payload.duration_ms,
+      data: { ...event.payload, final: true, game_name: origin?.data.game_name },
+    });
+  },
+};
+
+function jsonNode(label, value, depth) {
+  const key = label === null ? [] : [el("span", "j-key", String(label)), el("span", "j-count", ": ")];
+  if (value !== null && typeof value === "object") {
+    const entries = Array.isArray(value) ? value.map((item, index) => [index, item]) : Object.entries(value);
+    const count = Array.isArray(value) ? `[${entries.length}]` : `{${entries.length}}`;
+    if (!entries.length) {
+      const leaf = el("div", "j-entry");
+      leaf.append(...key, el("span", "j-count", Array.isArray(value) ? "[]" : "{}"));
+      return leaf;
+    }
+    const node = el("details", "j-node");
+    node.open = depth < 2;
+    const head = el("summary");
+    head.append(...key, el("span", "j-count", count));
+    const children = el("div", "j-children");
+    children.append(...entries.map(([name, item]) => jsonNode(name, item, depth + 1)));
+    node.append(head, children);
+    return node;
+  }
+  const leaf = el("div", "j-entry");
+  leaf.append(...key);
+  if (typeof value === "string" && value.length > 240) {
+    const text = el("span", "j-string", JSON.stringify(`${value.slice(0, 240)}…`));
+    const more = el("button", "more", `展开（${value.length.toLocaleString("en-US")} 字）`);
+    more.type = "button";
+    more.addEventListener("click", () => {
+      text.textContent = JSON.stringify(value);
+      more.remove();
+    });
+    leaf.append(text, more);
+  } else {
+    leaf.append(el("span", `j-${value === null ? "null" : typeof value}`, JSON.stringify(value)));
+  }
+  return leaf;
+}
+
+function section(heading, content) {
+  const node = el("div", "section");
+  node.append(el("h3", "", heading), content);
+  return node;
+}
+const jsonBlock = (value) => {
+  const block = el("div", "block");
+  block.append(jsonNode(null, value, 0));
+  return block;
+};
+
+function inspect(row) {
+  const panel = $("inspector");
+  const data = row.data;
+  const head = el("div", `i-head kind-${row.kind}`);
+  head.append(el("span", "badge", KINDS[row.kind]), el("span", "i-title", title(row)));
+  if (STATUS[row.status]) head.append(el("span", `i-status ${row.status}`, STATUS[row.status]));
+
+  const party = { "a2a-out": ["发往", data.game_name], "a2a-in": ["来自", data.game_name || "游戏 Agent"] };
+  const facts = [party[row.kind] || ["发起方", actorName(row.actor)], ["时间", clock(row.time, true)]];
+  if (row.group.index) facts.push(["轮次", `第 ${row.group.index} 轮`]);
+  if (row.duration !== null) facts.push(["耗时", millis(row.duration)]);
+  if (row.kind === "user" && data.spoken_at) {
+    facts.push(["开始说话", clock(data.spoken_at, true)],
+      ["说话到识别完成", millis((row.time - data.spoken_at) * 1000)]);
+  }
+  if (row.kind === "a2a-in" && row.offset !== null) facts.push(["距请求发出", millis(row.offset)]);
+  if (row.kind === "reply" && row.offset !== null) facts.push(["距用户说完", millis(row.offset)]);
+  for (const name of ["call_id", "request_id", "context_id"]) if (data[name]) facts.push([name, data[name]]);
+  const list = el("dl", "facts");
+  for (const [name, value] of facts) list.append(el("dt", "", name), el("dd", "", value));
+
+  const sections = [];
+  if (row.kind === "user") sections.push(section("ASR 识别结果", el("div", "block text", data.text)));
+  if (row.kind === "reply") sections.push(section("回复文字", el("div", "block text", data.text)));
+  if (row.kind === "tool" || row.kind === "subtool") {
+    sections.push(section("参数", jsonBlock(data.arguments)));
+    if (row.status === "ok") sections.push(section("返回", jsonBlock(data.result)));
+  }
+  if (row.kind === "a2a-out") sections.push(section("请求", jsonBlock(data.request)));
+  if (row.kind === "a2a-in" && data.result) {
+    sections.push(section("状态", jsonBlock(data.result.state)),
+      section("期望输入", jsonBlock(data.result.expected_input)),
+      section("输出", jsonBlock(data.result.outputs)));
+  }
+  if (data.error && !data.cancelled) sections.push(section("错误", el("div", "block error", data.error)));
+
+  const raw = el("details", "raw");
+  const copy = el("button", "more", "复制");
+  copy.type = "button";
+  const text = JSON.stringify(row.events, null, 2);
+  copy.addEventListener("click", async (event) => {
+    event.preventDefault();
+    await navigator.clipboard.writeText(text);
+    copy.textContent = "已复制";
+  });
+  const rawHead = el("summary", "", "原始事件");
+  rawHead.append(copy);
+  raw.append(rawHead, el("pre", "block", text));
+  const rawSection = el("div", "section");
+  rawSection.append(raw);
+
+  panel.replaceChildren(head, list, ...sections, rawSection);
+}
+
+function select(row) {
+  state.selected?.node.classList.remove("selected");
+  state.selected = row;
+  if (!row) {
+    $("inspector").replaceChildren(el("div", "placeholder", "选择一条记录查看输入和输出"));
+    return;
+  }
+  row.node.classList.add("selected");
+  row.node.scrollIntoView({ block: "nearest" });
+  inspect(row);
+}
+
+function trim() {
+  // 页面只保留最近的记录，从最早的轮次开始整组移除。
+  while (state.rows.length > LIMIT && state.groups.length > 1) {
+    const group = state.groups.shift();
+    const removed = new Set(group.rows);
+    group.node.remove();
+    state.rows = state.rows.filter((row) => !removed.has(row));
+    for (const [id, item] of state.turns) if (item === group) state.turns.delete(id);
+    for (const name of ["calls", "requests"]) {
+      for (const [id, row] of state[name]) if (removed.has(row)) state[name].delete(id);
+    }
+    if (removed.has(state.selected)) select(null);
+  }
+}
+
+function reset() {
+  for (const group of state.groups) group.node.remove();
+  Object.assign(state, { turnCount: 0, groups: [], rows: [] });
+  for (const name of ["turns", "calls", "requests"]) state[name].clear();
+  $("empty").hidden = false;
+  $("counts").textContent = "";
+  select(null);
+}
+
+function restarted() {
+  // 上一次运行的进程已经退出，仍在运行的记录不会再收到结果。
+  for (const row of state.rows) {
+    if (row.status === "running") {
+      row.status = "lost";
+      paint(row);
+    }
+  }
+  if (state.rows.length) {
+    const node = el("div", "divider", `应用已重新启动 · ${clock(Date.now() / 1000)}`);
+    $("scroll").append(node);
+    state.groups.push({ kind: "divider", rows: [], node });
+  }
+  state.turnCount = 0;
+}
+
+function setStatus(name, text) {
+  $("status").className = `status ${name}`;
+  $("status").lastElementChild.textContent = text;
+}
+
+function connect() {
+  const source = new EventSource(`events?after=${encodeURIComponent(state.cursor)}`);
+  source.addEventListener("open", () => setStatus("live", "实时"));
+  source.addEventListener("error", () => {
+    setStatus("down", "已断开，正在重连");
+    // 应用退出后浏览器会停止自动重连，这里带着最后的事件 ID 重新建立连接。
+    if (source.readyState === EventSource.CLOSED) setTimeout(connect, 2000);
+  });
+  source.addEventListener("run", (message) => {
+    const { run_id: runId } = JSON.parse(message.data);
+    if (state.runId && state.runId !== runId) restarted();
+    state.runId = runId;
+  });
+  source.addEventListener("message", (message) => {
+    state.cursor = message.lastEventId;
+    const event = JSON.parse(message.data);
+    handlers[event.type]?.(event);
+  });
+}
+connect();
+
+$("scroll").addEventListener("scroll", () => {
+  const view = $("scroll");
+  state.follow = view.scrollHeight - view.scrollTop - view.clientHeight < 32;
+  $("tail").hidden = state.follow;
+});
+$("tail").addEventListener("click", () => {
+  $("scroll").scrollTop = $("scroll").scrollHeight;
+});
+$("clear").addEventListener("click", reset);
+$("search").addEventListener("input", () => filter(state.rows));
+$("collapse").addEventListener("click", () => {
+  state.collapsed = !state.collapsed;
+  $("collapse").textContent = state.collapsed ? "展开所有轮次" : "收起所有轮次";
+  for (const group of state.groups) group.node.classList.toggle("collapsed", state.collapsed);
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+  const rows = [...document.querySelectorAll(".group:not(.collapsed):not([hidden]) .row:not([hidden])")]
+    .map((node) => rowOf.get(node));
+  if (!rows.length) return;
+  event.preventDefault();
+  const current = rows.indexOf(state.selected);
+  const next = current < 0 ? rows.length - 1 : current + (event.key === "ArrowDown" ? 1 : -1);
+  select(rows[Math.max(0, Math.min(rows.length - 1, next))]);
+});
+select(null);
+</script>
+</body>
+</html>

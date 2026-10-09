@@ -62,6 +62,7 @@ uv run watcherobot app run .
 | `JEV_MODEL` / `JEV_CONFIDENCE_THRESHOLD` | 你画我猜的 JEV 模型与判定置信度，默认 `jev-latest` / `0.65` |
 | `LLM_API_KEY` | 当前配置文件所属 Agent 的 OpenAI 兼容接口凭据 |
 | `GAME_CATALOG` | 主程序的游戏目录路径，默认项目中的 `games.json`；相对路径以主程序 `.env` 所在目录为基准 |
+| `OBSERVABILITY_PORT` | 可观测性页面的本机端口，默认 8765 |
 
 `DASHSCOPE_BASE_URL` 是百炼业务空间的地址，换 key 时记得一起改。
 
@@ -86,15 +87,32 @@ LLM_EXTRA_BODY_JSON={"thinking":{"type":"enabled"},"reasoning_effort":"low"}
 
 你画我猜的生成提示词要求模型优先选择常见动物，并使用常用、容易读写的名称和别名，避免名称中含有不常见的生僻字。
 
+## 可观测性
+
+应用运行期间打开 `http://127.0.0.1:8765` 查看实时轨迹，端口由 `OBSERVABILITY_PORT` 设置，服务只监听本机。页面按轮次列出四类记录，点击任意一行在右侧查看完整输入和输出：
+
+| 记录 | 内容 |
+| --- | --- |
+| 用户 | ASR 的最终识别文字，每条开启一轮 |
+| 主 Agent · 回复 | 主 Agent 不经过游戏、直接回复用户的文字；游戏播报在 A2A 结果中 |
+| 主 Agent · 工具、游戏 Agent · 工具 | 各自发起的工具调用，包含完整参数、返回或错误、耗时 |
+| A2A →、A2A ← | 主 Agent 发给游戏的 `GameRequest`，以及游戏返回的进度消息和最终 `GameResult` |
+
+一次 A2A 请求及其引发的游戏侧工具调用归入发起它的那一轮，图案生成这类较晚返回的结果也归回原来那一轮。程序退出时自动发送的 `end` 显示在“轮次之间”。远程游戏只显示 A2A 请求和结果。
+
+事件只保存在内存中，保留最近 2000 条，重启后清空；不保存录音，也不写入磁盘。页面最多显示最近 3000 条记录，断线后保留已收到的记录并自动重连，应用重启后在原记录之后继续显示新的运行。事件包含对话内容，不包含密钥。
+
+每一轮的标题显示从用户说完到最后一条记录的耗时，时间线一列画出各条记录在这一轮中的起止位置：工具调用和 A2A 请求是时间段，其余记录是时间点。页面顶部可以搜索记录、收起或展开全部轮次；收起后每轮显示用户原话和记录条数。上下方向键切换选中的记录。
+
 ## 测试
 
 ```bash
 uv run pytest -q
-uv run ruff check app.py robot_agents games scripts tests
+uv run ruff check app.py robot_agents games observability scripts tests
 uv run watcherobot app check .
 ```
 
-默认执行 `tests/unit` 中的单元测试，使用真实题目和音频样本，覆盖游戏规则、提示顺序、图案校验、表情、音频处理和配置校验，不连接设备和模型服务。
+默认执行 `tests/unit` 中的单元测试，使用真实题目和音频样本，覆盖游戏规则、提示顺序、图案校验、表情、音频处理、配置校验和可观测性事件关联，不连接设备和模型服务。
 
 E2E 使用各 Agent 的 `.env` 调用真实 OpenAI 兼容接口并产生费用。真机测试需要连接机器人并停止游戏，将机器人放在 Mac 电脑扬声器附近，确保它能清楚收录电脑播放的声音。
 
@@ -103,6 +121,7 @@ E2E 使用各 Agent 的 `.env` 调用真实 OpenAI 兼容接口并产生费用�
 | `uv run pytest tests/e2e -m e2e -q` | 全部模型服务与真机 E2E |
 | `uv run pytest tests/e2e/test_agents.py -m e2e -q` | 真实 A2A HTTP、游戏注册、模型选择与聊天、单游戏限制、取消生成、完整五题、音频 → ASR → 工具调用 → 游戏 |
 | `uv run pytest tests/e2e/test_main_intent.py tests/e2e/test_speech.py -m e2e -q` | 主 Agent 工具选择、连续 ASR、退出后重新开始、语音输入与完整 A2A 交互 |
+| `uv run pytest tests/e2e/test_observability.py -m e2e -q` | 真实 TTS 音频 → 持续 ASR → 主 Agent → 猜数字，检查每轮的用户输入、工具调用和 A2A 事件关联，不连接设备 |
 | `uv run pytest tests/e2e/test_tools.py -m e2e -q` | OpenAI 兼容接口调用真实游戏工具，验证状态和下一步输入要求 |
 | `uv run pytest tests/e2e/test_services.py -m e2e -q` | 模型生成、历史保存、聊天上下文、Jev 分类、ASR → LLM → TTS |
 | `uv run pytest tests/e2e/test_robot.py -m e2e -q` | 真机，仅 macOS：完整五题语音游戏、提示、表情、计分、跳题、交流、结束及音频资源释放 |
@@ -183,6 +202,9 @@ flowchart TD
 | `robot_agents/microphone.py` | 麦克风收音和播报时静音 |
 | `robot_agents/config.py` | 配置读取和检查 |
 | `robot_agents/assets/emojis/` | 公共表情 SVG |
+| `observability/events.py` | 事件总线、轮次与上下级关联、工具调用和 A2A 通信的记录入口 |
+| `observability/server.py` | 本机 HTTP 服务与 SSE 事件流，支持按事件 ID 续传 |
+| `observability/web/index.html` | 轨迹页面：按轮次分组的记录表与检查器 |
 | `scripts/` | 眼型预览工具 |
 | `tests/` | 单元测试、真实服务和真机 E2E |
 
