@@ -667,8 +667,12 @@ function inspect(row) {
   const text = JSON.stringify(row.events, null, 2);
   copy.addEventListener("click", async (event) => {
     event.preventDefault();
-    await navigator.clipboard.writeText(text);
-    copy.textContent = "已复制";
+    try {
+      await navigator.clipboard.writeText(text);
+      copy.textContent = "已复制";
+    } catch {
+      copy.textContent = "复制失败";
+    }
   });
   const rawHead = el("summary", "", "原始事件");
   rawHead.append(copy);
@@ -708,7 +712,8 @@ function trim() {
 
 function reset() {
   for (const group of state.groups) group.node.remove();
-  Object.assign(state, { turnCount: 0, groups: [], rows: [] });
+  // 清空只移除页面上的记录，轮次和记录的编号在同一次运行内继续累加。
+  Object.assign(state, { groups: [], rows: [] });
   for (const name of ["turns", "calls", "requests"]) state[name].clear();
   $("empty").hidden = false;
   $("counts").textContent = "";
