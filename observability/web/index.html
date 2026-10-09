@@ -319,6 +319,8 @@ function timeCell(row) {
   if (row.status === "lost") return ["中断", "c-time"];
   if (row.duration !== null) return [millis(row.duration), row.status === "error" ? "c-time failed" : "c-time"];
   if (row.offset !== null) return [`+${millis(row.offset)}`, "c-time"];
+  // 用户输入一行显示从开始说话到识别完成的耗时，发生时刻已经在轮次标题上。
+  if (row.kind === "user" && row.data.spoken_at) return [millis((row.time - row.data.spoken_at) * 1000), "c-time"];
   return [clock(row.time), "c-time"];
 }
 
