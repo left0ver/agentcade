@@ -1,6 +1,7 @@
 import asyncio
 import json
 import re
+import socket
 import time
 from pathlib import Path
 from types import SimpleNamespace
@@ -364,6 +365,19 @@ def test_occupied_port_reports_the_setting_to_change():
     async def scenario():
         async with serve(0, EventBus()) as url, serve(int(url.rsplit(":", 1)[1]), EventBus()):
             pass
+
+    with pytest.raises(RuntimeError, match="OBSERVABILITY_PORT"):
+        asyncio.run(scenario())
+
+
+def test_port_used_by_a_service_on_all_interfaces_is_refused():
+    async def scenario():
+        with socket.socket() as other:
+            other.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            other.bind(("0.0.0.0", 0))
+            other.listen()
+            async with serve(other.getsockname()[1], EventBus()):
+                pass
 
     with pytest.raises(RuntimeError, match="OBSERVABILITY_PORT"):
         asyncio.run(scenario())

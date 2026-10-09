@@ -56,6 +56,12 @@ async def serve(port, events=bus):
     try:
         listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
+            # 其他服务监听全部网卡时，本机地址仍然可以绑定成功并截走发给它的本机连接，
+            # 所以先确认这个端口上没有服务在接受连接。
+            with socket.socket() as probe:
+                probe.settimeout(0.5)
+                if port and probe.connect_ex(("127.0.0.1", port)) == 0:
+                    raise OSError("端口上已有其他服务")
             listener.bind(("127.0.0.1", port))
         except OSError as error:
             raise RuntimeError(

@@ -66,7 +66,7 @@ class Settings:
     speech_timeout_seconds: int = 90
     asr_silence_ms: int = 800
     input_gain: float = 4.0
-    observability_port: int = 8765
+    observability_port: int = 8790
 
     def __post_init__(self) -> None:
         for name in (
@@ -113,5 +113,5 @@ class Settings:
             speech_timeout_seconds=int(values.get("SPEECH_TIMEOUT_SECONDS", "90")),
             asr_silence_ms=int(values.get("ASR_SILENCE_MS", "800")),
             input_gain=float(values.get("ASR_INPUT_GAIN", "4")),
-            observability_port=int(values.get("OBSERVABILITY_PORT", "8765")),
+            observability_port=int(values.get("OBSERVABILITY_PORT", "8790")),
         )

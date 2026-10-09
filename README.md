@@ -62,7 +62,7 @@ uv run watcherobot app run .
 | `JEV_MODEL` / `JEV_CONFIDENCE_THRESHOLD` | 你画我猜的 JEV 模型与判定置信度，默认 `jev-latest` / `0.65` |
 | `LLM_API_KEY` | 当前配置文件所属 Agent 的 OpenAI 兼容接口凭据 |
 | `GAME_CATALOG` | 主程序的游戏目录路径，默认项目中的 `games.json`；相对路径以主程序 `.env` 所在目录为基准 |
-| `OBSERVABILITY_PORT` | 可观测性页面的本机端口，默认 8765 |
+| `OBSERVABILITY_PORT` | 可观测性页面的本机端口，默认 8790；不能使用 SDK 守护进程占用的 8765 和 8767 |
 
 `DASHSCOPE_BASE_URL` 是百炼业务空间的地址，换 key 时记得一起改。
 
@@ -89,7 +89,7 @@ LLM_EXTRA_BODY_JSON={"thinking":{"type":"enabled"},"reasoning_effort":"low"}
 
 ## 可观测性
 
-应用运行期间打开 `http://127.0.0.1:8765` 查看实时轨迹，端口由 `OBSERVABILITY_PORT` 设置，服务只监听本机。页面按轮次列出四类记录，点击任意一行在右侧查看完整输入和输出：
+应用运行期间打开 `http://127.0.0.1:8790` 查看实时轨迹，端口由 `OBSERVABILITY_PORT` 设置，服务只监听本机。端口上已有其他服务时应用启动失败并提示修改端口。页面按轮次列出四类记录，点击任意一行在右侧查看完整输入和输出：
 
 | 记录 | 内容 |
 | --- | --- |
