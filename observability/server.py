@@ -1,5 +1,6 @@
 import asyncio
 import json
+import os
 import socket
 from contextlib import asynccontextmanager, nullcontext
 from pathlib import Path
@@ -54,7 +55,9 @@ async def serve(port, events=bus):
         return FileResponse(PAGE, headers={"Cache-Control": "no-store"})
 
     try:
-        listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # Windows 上这个选项允许多个进程绑定同一端口，只在 POSIX 系统上用于重启后立即复用端口。
+        if os.name == "posix":
+            listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
             # 其他服务监听全部网卡时，本机地址仍然可以绑定成功并截走发给它的本机连接，
             # 所以先确认这个端口上没有服务在接受连接。
