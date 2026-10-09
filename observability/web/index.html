@@ -167,6 +167,18 @@ main { flex: 1; display: flex; min-height: 0; }
 .j-null, .j-count { color: var(--muted); }
 .more { margin-left: 6px; padding: 0 4px; border: 0; background: none; color: var(--accent);
   cursor: pointer; font: inherit; }
+.links button {
+  display: flex; align-items: center; gap: 8px; width: 100%; padding: 3px 0; border: 0;
+  background: none; text-align: left; cursor: pointer;
+}
+.links button > span:last-child { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.links button:hover > span:last-child { color: var(--accent); }
+.links .dim { flex: none; width: 64px; font: 12px/20px var(--mono); }
+.drawings { display: flex; flex-wrap: wrap; gap: 12px; }
+.drawings figure { margin: 0; }
+.drawings figcaption { margin-top: 4px; font-size: 12px; color: var(--muted); }
+.drawing { display: block; width: 200px; height: 200px; border-radius: 8px; background: #000; }
+.drawing polyline { fill: none; stroke: #fff; stroke-linecap: round; stroke-linejoin: round; }
 .raw > summary { cursor: pointer; font-size: 12px; font-weight: 600; color: var(--muted); }
 .raw .more { float: right; margin: 0; }
 .raw .block { margin-top: 8px; }
@@ -260,7 +272,13 @@ function exchangeText(data) {
   const parts = [data.final ? "完成" : "进度"];
   if (result.state?.phase) parts.push(result.state.phase);
   if (result.expected_input?.kind) parts.push(`期望 ${result.expected_input.kind}`);
-  if (outputs.some((item) => item.paths?.length)) parts.push("图案");
+  for (const item of outputs) {
+    if (item.paths?.length) parts.push("图案");
+    if (item.expression) parts.push(`表情 ${item.expression}`);
+    if (item.gesture) parts.push(`动作 ${item.gesture}`);
+    if (item.progress_seconds) parts.push("进度条");
+    if (item.clear) parts.push("清屏");
+  }
   const spoken = outputs.map((item) => item.text).filter(Boolean).join(" ");
   return [[parts.join(" · "), "dim"], [spoken ? ` · “${spoken}”` : "", ""]];
 }
@@ -340,6 +358,7 @@ function addRow(event, spec) {
   const row = {
     kind: spec.kind, depth: spec.depth || 0, status: spec.status || "none", data: spec.data,
     duration: null, offset: spec.offset ?? null, time: event.time, actor: event.actor,
+    id: spec.id ?? null, parent: spec.parent ?? null,
     events: [event], group, index: ++state.rowCount,
   };
   // 刚发生的记录短暂高亮，方便看到较晚返回、插入到前面轮次的结果。
@@ -361,6 +380,7 @@ function addRow(event, spec) {
   group.body.append(row.node);
   paint(row);
   trim();
+  if (row.parent && state.selected?.id === row.parent) inspect(state.selected);
   if (group === state.groups[state.groups.length - 1]) followTail();
   return row;
 }
@@ -430,7 +450,7 @@ const handlers = {
   "tool.call"(event) {
     const row = addRow(event, {
       kind: event.actor === "main" ? "tool" : "subtool", depth: event.parent_id ? 1 : 0,
-      status: "running", data: { ...event.payload },
+      status: "running", data: { ...event.payload }, id: event.payload.call_id, parent: event.parent_id,
     });
     state.calls.set(event.payload.call_id, row);
   },
@@ -449,6 +469,7 @@ const handlers = {
     state.games.set(event.payload.game_id, event.payload.game_name);
     const row = addRow(event, {
       kind: "a2a-out", depth: event.parent_id ? 1 : 0, status: "running", data: { ...event.payload },
+      id: event.payload.request_id, parent: event.parent_id,
     });
     state.requests.set(event.payload.request_id, row);
   },
@@ -456,6 +477,7 @@ const handlers = {
     const origin = state.requests.get(event.payload.request_id);
     addRow(event, {
       kind: "a2a-in", depth: origin ? origin.depth : 1, group: origin?.group,
+      parent: event.payload.request_id,
       offset: origin ? (event.time - origin.time) * 1000 : null,
       data: { ...event.payload, final: false, game_name: origin?.data.game_name },
     });
@@ -470,6 +492,7 @@ const handlers = {
     }
     addRow(event, {
       kind: "a2a-in", depth: origin ? origin.depth : 1, group: origin?.group,
+      parent: event.payload.request_id,
       status: event.payload.ok ? "none" : outcome(event.payload), offset: event.payload.duration_ms,
       data: { ...event.payload, final: true, game_name: origin?.data.game_name },
     });
@@ -510,6 +533,78 @@ function jsonNode(label, value, depth) {
     leaf.append(el("span", `j-${value === null ? "null" : typeof value}`, JSON.stringify(value)));
   }
   return leaf;
+}
+
+function decodeVector(hex) {
+  // 与 robot_agents/vector.py 的编码对应：版本、笔画数，每条笔画为宽度、点数和 16 位大端坐标。
+  if (typeof hex !== "string" || !/^(?:[0-9a-f]{2})+$/.test(hex)) return null;
+  const bytes = hex.match(/../g).map((pair) => parseInt(pair, 16));
+  if (bytes[0] !== 1) return null;
+  const strokes = [];
+  let offset = 2;
+  for (let index = 0; index < bytes[1]; index += 1) {
+    const [width, count] = [bytes[offset], bytes[offset + 1]];
+    offset += 2;
+    const points = [];
+    for (let point = 0; point < count; point += 1, offset += 4) {
+      points.push([bytes[offset] * 256 + bytes[offset + 1], bytes[offset + 2] * 256 + bytes[offset + 3]]);
+    }
+    strokes.push({ width, points });
+  }
+  return offset === bytes.length ? strokes : null;
+}
+
+function drawing(hex, caption) {
+  const strokes = decodeVector(hex);
+  if (!strokes) return null;
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", "0 0 412 412");
+  svg.setAttribute("class", "drawing");
+  for (const stroke of strokes) {
+    const line = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
+    // 只有一个点的笔画重复该点，圆头线帽会把它画成圆点。
+    const points = stroke.points.length === 1 ? [stroke.points[0], stroke.points[0]] : stroke.points;
+    line.setAttribute("points", points.map((point) => point.join(",")).join(" "));
+    line.setAttribute("stroke-width", stroke.width);
+    svg.append(line);
+  }
+  const figure = el("figure");
+  figure.append(svg, el("figcaption", "", caption));
+  return figure;
+}
+
+function drawings(outputs) {
+  const figures = [];
+  for (const output of outputs || []) {
+    if (output.paths?.length) {
+      figures.push(drawing(output.paths[output.paths.length - 1], `图案，共 ${output.paths.length} 笔，逐笔显示`));
+    }
+    if (output.restore_path) figures.push(drawing(output.restore_path, "反馈表情之后恢复显示的图案"));
+  }
+  const node = el("div", "drawings");
+  node.append(...figures.filter(Boolean));
+  return node.childElementCount ? node : null;
+}
+
+function related(row) {
+  const links = [];
+  const parent = row.parent && state.rows.find((item) => item.id === row.parent);
+  if (parent) links.push(["上级", parent]);
+  if (row.id) links.push(...state.rows.filter((item) => item.parent === row.id).map((item) => ["下级", item]));
+  if (!links.length) return null;
+  const node = el("div", "links");
+  for (const [relation, target] of links) {
+    const link = el("button", `kind-${target.kind}`);
+    link.type = "button";
+    link.append(el("span", "dim", `${relation} #${target.index}`), el("span", "badge", KINDS[target.kind]),
+      el("span", "", target.summary.textContent));
+    link.addEventListener("click", () => {
+      target.group.node.classList.remove("collapsed");
+      select(target);
+    });
+    node.append(link);
+  }
+  return node;
 }
 
 function section(heading, content) {
@@ -556,8 +651,13 @@ function inspect(row) {
     sections.push(section("状态", jsonBlock(data.result.state)),
       section("期望输入", jsonBlock(data.result.expected_input)),
       section("输出", jsonBlock(data.result.outputs)));
+    const pictures = drawings(data.result.outputs);
+    if (pictures) sections.push(section("屏幕图案", pictures));
   }
   if (data.error && !data.cancelled) sections.push(section("错误", el("div", "block error", data.error)));
+
+  const links = related(row);
+  if (links) sections.push(section("关联记录", links));
 
   const raw = el("details", "raw");
   const copy = el("button", "more", "复制");
@@ -671,6 +771,9 @@ $("collapse").addEventListener("click", () => {
   for (const group of state.groups) group.node.classList.toggle("collapsed", state.collapsed);
 });
 document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && event.target !== $("search")) select(null);
+  // 在搜索框里输入时，方向键留给输入框自己使用。
+  if (event.target === $("search")) return;
   if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
   const rows = [...document.querySelectorAll(".group:not(.collapsed):not([hidden]) .row:not([hidden])")]
     .map((node) => rowOf.get(node));

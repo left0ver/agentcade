@@ -1,14 +1,17 @@
 import asyncio
 import json
+import re
 import time
+from pathlib import Path
 from types import SimpleNamespace
 
 import httpx
 import pytest
 
 import observability
+from observability import events as recorder
 from observability.events import EventBus
-from observability.server import serve
+from observability.server import PAGE, serve
 from robot_agents.config import LLMSettings, Settings
 from robot_agents.main_agent import MainAgent
 from robot_agents.protocol import (
@@ -329,6 +332,17 @@ def test_failed_tool_is_recorded_and_still_raises():
     assert result["payload"]["ok"] is False
     assert result["payload"]["error"] == "RuntimeError: 设备没有响应"
     assert "result" not in result["payload"]
+
+
+def test_page_handles_every_recorded_event_type():
+    source = Path(recorder.__file__).read_text(encoding="utf-8")
+    emitted = set(re.findall(r'bus\.emit\("([a-z0-9.]+)"', source))
+    handled = set(re.findall(r'^  "([a-z0-9.]+)"\(event\) \{$', PAGE.read_text(encoding="utf-8"),
+                             re.MULTILINE))
+    assert emitted == handled == {
+        "user.input", "agent.reply", "tool.call", "tool.result",
+        "a2a.request", "a2a.update", "a2a.result",
+    }
 
 
 def test_unserializable_payload_does_not_interrupt_the_caller():
