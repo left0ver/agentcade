@@ -117,7 +117,7 @@ class ScriptedSpeech:
         while (text := await self.utterances.get()) is not None:
             # 起止时间只相差几毫秒，避免把这句话算到上一轮改变游戏状态之前。
             now = time.monotonic()
-            on_result(RecognizedSpeech(text, now - 0.004, now - 0.001))
+            on_result(RecognizedSpeech(text, now - 0.004, now - 0.001, now))
 
 
 class SilentMicrophone:
@@ -236,7 +236,8 @@ def test_speech_turns_keep_late_game_results_with_the_turn_that_started_them(run
     for event in turns:
         payload = event["payload"]
         assert payload["speech_ended_at"] - payload["spoken_at"] == pytest.approx(0.003, abs=0.0005)
-        assert 0 < event["time"] - payload["speech_ended_at"] < 0.2
+        assert payload["audio_sent_until"] - payload["speech_ended_at"] == pytest.approx(0.001, abs=0.0005)
+        assert 0 <= event["time"] - payload["audio_sent_until"] < 0.2
     first, second, chat = (
         [(item["type"], item["actor"], item["payload"].get("tool")) for item in events
          if item["turn_id"] == event["turn_id"]]

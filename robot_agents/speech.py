@@ -18,6 +18,8 @@ class RecognizedSpeech:
     text: str
     started_at: float
     ended_at: float | None = None
+    # 识别结果返回时，已经送入识别服务的最后一段音频的采集时间。
+    sent_until: float | None = None
 
 
 class SpeechTimeline:
@@ -230,6 +232,7 @@ class QwenSpeech:
                     if started_at is not None:
                         on_result(RecognizedSpeech(
                             text, started_at, timeline.captured_at(sentence["end_time"]),
+                            timeline.captured_at(timeline.sent_samples / 16),
                         ))
 
             async with asyncio.TaskGroup() as group:

@@ -88,7 +88,7 @@ def elapsed_ms(started):
     return round((time.monotonic() - started) * 1000)
 
 
-def user_input(text, started_at, ended_at=None):
+def user_input(text, started_at, ended_at=None, sent_until=None):
     """记录 ASR 的最终识别结果，返回新一轮的 ID。时间参数是采集音频时的单调时钟读数。"""
     identifier = uuid4().hex
     offset = time.time() - time.monotonic()
@@ -96,6 +96,7 @@ def user_input(text, started_at, ended_at=None):
         bus.emit("user.input", {
             "text": text, "spoken_at": offset + started_at,
             "speech_ended_at": None if ended_at is None else offset + ended_at,
+            "audio_sent_until": None if sent_until is None else offset + sent_until,
         })
     return identifier
 

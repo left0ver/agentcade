@@ -34,7 +34,9 @@ class SpeechInput:
                 "started_at": message.started_at, "text": message.text,
             })
             self.logger.info("ASR 用户原话：%s", message.text)
-            turn_id = observability.user_input(message.text, message.started_at, message.ended_at)
+            turn_id = observability.user_input(
+                message.text, message.started_at, message.ended_at, message.sent_until,
+            )
             messages.put_nowait((message, context, turn_id))
 
         async def frames():

@@ -637,8 +637,14 @@ function inspect(row) {
     facts.push(["开始说话", clock(data.spoken_at, true)]);
     if (data.speech_ended_at) {
       // 把这段时间拆成两部分：识别服务判定的说话时长，以及说完之后等到最终结果的时间。
-      facts.push(["说话时长", millis((data.speech_ended_at - data.spoken_at) * 1000)],
-        ["说完到识别完成", millis((row.time - data.speech_ended_at) * 1000)]);
+      facts.push(["说话时长", millis((data.speech_ended_at - data.spoken_at) * 1000)]);
+      if (data.audio_sent_until) {
+        // 说完之后识别服务又收到多少音频才给出结果，以及结果返回时音频发送落后多少。
+        facts.push(["断句等待", millis((data.audio_sent_until - data.speech_ended_at) * 1000)],
+          ["音频发送延迟", millis((row.time - data.audio_sent_until) * 1000)]);
+      } else {
+        facts.push(["说完到识别完成", millis((row.time - data.speech_ended_at) * 1000)]);
+      }
     }
     facts.push(["说话到识别完成", millis((row.time - data.spoken_at) * 1000)]);
   }

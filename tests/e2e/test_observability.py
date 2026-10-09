@@ -74,7 +74,10 @@ def test_real_speech_turns_record_tools_and_a2a_exchange(run_directory):
     assert "猜数字" in started["payload"]["text"] and "结束" in ended["payload"]["text"]
     for user, action, tool in ((started, "start", "start_game"), (ended, "end", "end_game")):
         assert 0.5 < user["time"] - user["payload"]["spoken_at"] < 15
-        assert user["payload"]["spoken_at"] < user["payload"]["speech_ended_at"] <= user["time"]
+        payload = user["payload"]
+        assert payload["spoken_at"] < payload["speech_ended_at"] < payload["audio_sent_until"]
+        # 测试音频以每帧开头的时刻作为采集时间，最后一帧的结束时刻可以略晚于识别完成。
+        assert user["time"] - payload["audio_sent_until"] == pytest.approx(0, abs=0.5)
         turn = [event for event in events if event["turn_id"] == user["turn_id"]]
         main_call, = [event for event in turn
                       if event["type"] == "tool.call" and event["actor"] == "main"]
