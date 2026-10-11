@@ -5,7 +5,7 @@ from collections import deque
 from collections.abc import AsyncIterator
 from contextlib import suppress
 
-from watcherobot.errors import WatcheRobotError
+from watcherobot.errors import CommandError, WatcheRobotError
 from watcherobot.media import AudioFormat
 
 from observability import describe
@@ -18,6 +18,7 @@ PCM_TIMEOUT_SECONDS = 10.0
 REOPEN_DELAY_SECONDS = 1.0
 MAX_REOPEN_DELAY_SECONDS = 5.0
 KEEPALIVE_AFTER_SECONDS = 1.0
+ORPHAN_SESSIONS = 4
 # 设备拒绝或没有应答指令、会话被设备关闭，这些情况重新打开麦克风就能恢复。
 RECOVERABLE_ERRORS = (WatcheRobotError, TimeoutError, RuntimeError, OSError)
 
@@ -46,6 +47,7 @@ class MicrophoneInput:
         self.sessions = deque(maxlen=32)
         self.failures = 0
         self.stale = None
+        self.last_session_id = None
 
     async def pause(self, *, owner: object) -> None:
         self.pause_owners.add(owner)
@@ -82,6 +84,7 @@ class MicrophoneInput:
                     session = await self._open()
                 except RECOVERABLE_ERRORS as error:
                     problem = f"打开麦克风失败：{describe(error)}"
+                    await self._release_device(error)
                 else:
                     if session.format != AudioFormat():
                         raise ValueError("麦克风需要提供 16 kHz、单声道、16-bit PCM")
@@ -111,12 +114,35 @@ class MicrophoneInput:
             self.robot.microphone.open_pcm, queue_size=128
         ))
         try:
-            return await asyncio.shield(opening)
+            session = await asyncio.shield(opening)
+            self.last_session_id = session.id
+            return session
         except asyncio.CancelledError:
             # 退出前等打开指令结束，并关闭已经建立的会话。
             with suppress(Exception):
                 await self._close(await opening)
             raise
+
+    async def _release_device(self, error) -> None:
+        """设备以 busy 拒绝打开麦克风时，释放断线留在设备上的占用。"""
+        if not isinstance(error, CommandError) or error.reason != "busy":
+            return
+        try:
+            # 播放中途断线，设备会一直认为还在播放。
+            await sdk_command(self.robot.audio.stop)
+            # 打开指令的确认丢失时，设备上留着一个应用不知道编号的会话；编号由设备依次递增，
+            # 它紧跟在最后一个已知会话之后。
+            for offset in range(1, ORPHAN_SESSIONS + 1) if self.last_session_id else ():
+                session_id = self.last_session_id + offset
+                try:
+                    await sdk_command(
+                        self.robot._command, "ctrl.microphone.close", {"session_id": session_id},
+                    )
+                except CommandError:
+                    continue
+                logger.warning("已关闭设备上残留的麦克风会话 %s", session_id)
+        except RECOVERABLE_ERRORS as release_error:
+            logger.warning("释放设备音频占用失败：%s", describe(release_error))
 
     async def _close(self, session) -> None:
         try:
