@@ -10,14 +10,14 @@
   color-scheme: light dark;
   --bg: #ffffff; --panel: #f7f7f8; --border: #e4e4e7; --text: #1c1c1f; --muted: #777783;
   --hover: #f1f1f3; --selected: #e8f0ff; --accent: #2f62e8; --error: #c9302c; --ok: #19874a;
-  --user: #2f62e8; --main-tool: #7446d4; --game-tool: #0c8585; --a2a: #a86400; --reply: #19874a;
+  --user: #2f62e8; --main-tool: #7446d4; --game-tool: #0c8585; --a2a: #a86400; --reply: #19874a; --device: #b0326b;
   --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 }
 @media (prefers-color-scheme: dark) {
   :root {
     --bg: #141416; --panel: #1a1a1d; --border: #2a2a2f; --text: #e6e6ea; --muted: #8b8b97;
     --hover: #202024; --selected: #1c2740; --accent: #7ea4ff; --error: #ff6f66; --ok: #4dc480;
-    --user: #7ea4ff; --main-tool: #b294ff; --game-tool: #4fcfcf; --a2a: #e0a340; --reply: #4dc480;
+    --user: #7ea4ff; --main-tool: #b294ff; --game-tool: #4fcfcf; --a2a: #e0a340; --reply: #4dc480; --device: #f28ab5;
   }
 }
 * { box-sizing: border-box; }
@@ -98,6 +98,7 @@ main { flex: 1; display: flex; min-height: 0; }
 }
 .kind-user { --kind: var(--user); }
 .kind-reply { --kind: var(--reply); }
+.kind-device { --kind: var(--device); }
 .kind-main-tool { --kind: var(--main-tool); }
 .kind-game-tool { --kind: var(--game-tool); }
 .kind-a2a-out, .kind-a2a-in { --kind: var(--a2a); }
@@ -220,7 +221,7 @@ main { flex: 1; display: flex; min-height: 0; }
 const $ = (id) => document.getElementById(id);
 const KINDS = {
   user: "用户", reply: "主 Agent · 回复", "main-tool": "主 Agent · 工具", "game-tool": "游戏 Agent · 工具",
-  "a2a-out": "A2A →", "a2a-in": "A2A ←",
+  "a2a-out": "A2A →", "a2a-in": "A2A ←", device: "设备执行",
 };
 const STATUS = { running: "运行中", ok: "已完成", error: "失败", cancelled: "已取消", lost: "中断" };
 const outcome = (payload) => (payload.ok ? "ok" : payload.cancelled ? "cancelled" : "error");
@@ -261,8 +262,8 @@ function resultText(result) {
   if (Array.isArray(result.messages) && result.messages.length) return result.messages.join(" ");
   const parts = [];
   if (result.delivered) parts.push("已送达");
-  if (result.state?.phase) parts.push(result.state.phase);
-  if (result.state?.status) parts.push(result.state.status);
+  if (result.outcome) parts.push(result.outcome);
+  if (result.phase) parts.push(result.phase);
   return parts.length ? parts.join(" · ") : short(JSON.stringify(result));
 }
 
@@ -270,29 +271,24 @@ function exchangeText(data) {
   if (data.cancelled) return [["已取消", "dim"]];
   if (data.error) return [["失败 · ", "err"], [data.error, "err"]];
   const result = data.result || {};
-  const outputs = result.outputs || [];
-  const parts = [data.final ? "完成" : "进度"];
-  if (result.state?.phase) parts.push(result.state.phase);
-  if (result.expected_input?.kind) parts.push(`期望 ${result.expected_input.kind}`);
-  for (const item of outputs) {
-    if (item.paths?.length) parts.push("图案");
-    if (item.expression) parts.push(`表情 ${item.expression}`);
-    if (item.gesture) parts.push(`动作 ${item.gesture}`);
-    if (item.progress_seconds) parts.push("进度条");
-    if (item.clear) parts.push("清屏");
-  }
-  const spoken = outputs.map((item) => item.text).filter(Boolean).join(" ");
-  return [[parts.join(" · "), "dim"], [spoken ? ` · “${spoken}”` : "", ""]];
+  const parts = [data.final ? "最后一条" : "中间回复"];
+  if (result.session === "ended") parts.push("本局结束");
+  return [[parts.join(" · "), "dim"], [result.text ? ` · ${result.text}` : "", ""]];
 }
 
 function summary(row) {
   const data = row.data;
   if (row.kind === "user" || row.kind === "reply") return [[data.text, ""]];
+  if (row.kind === "device") {
+    const output = data.output;
+    const parts = [output.text, output.paths?.length ? "绘制图案" : "", output.expression,
+      output.gesture, output.clear ? "清屏" : "", output.progress_seconds ? "显示进度" : ""].filter(Boolean);
+    return [[parts.join(" · "), ""], [data.error ? ` · ${data.error}` : "", "err"]];
+  }
   if (row.kind === "a2a-in") return exchangeText(data);
   if (row.kind === "a2a-out") {
     const request = data.request || {};
-    const parts = [data.game_name, request.action];
-    if (request.revision !== null && request.revision !== undefined) parts.push(`版本 ${request.revision}`);
+    const parts = [data.game_name, request.kind];
     return [[parts.join(" · "), ""], [request.text ? ` · “${request.text}”` : "", "dim"]];
   }
   const parts = row.kind === "game-tool" ? [[`${gameName(row.actor)} · `, "dim"]] : [];
@@ -307,9 +303,10 @@ function title(row) {
   const data = row.data;
   if (row.kind === "user") return "用户输入";
   if (row.kind === "reply") return "主 Agent 回复";
-  if (row.kind === "a2a-out") return `${data.game_name} · ${data.request?.action ?? ""}`;
+  if (row.kind === "device") return `${actorName(row.actor)} · 设备执行`;
+  if (row.kind === "a2a-out") return `${data.game_name} · ${data.request?.kind ?? ""}`;
   if (row.kind === "a2a-in") {
-    return data.cancelled ? "请求已取消" : data.error ? "请求失败" : data.final ? "最终结果" : "进度消息";
+    return data.cancelled ? "请求已取消" : data.error ? "请求失败" : data.final ? "最后一条回复" : "中间回复";
   }
   return row.kind === "game-tool" ? `${gameName(row.actor)} · ${data.tool}` : data.tool;
 }
@@ -441,6 +438,10 @@ function timeline(group, ended) {
 }
 
 const handlers = {
+  "device.output"(event) {
+    addRow(event, { kind: "device", depth: event.parent_id ? 1 : 0, parent: event.parent_id, data: event.payload,
+      status: event.payload.completed ? "ok" : outcome(event.payload) });
+  },
   "user.input"(event) {
     addRow(event, { kind: "user", data: event.payload });
   },
@@ -663,10 +664,12 @@ function inspect(row) {
   }
   if (row.kind === "a2a-out") sections.push(section("请求", jsonBlock(data.request)));
   if (row.kind === "a2a-in" && data.result) {
-    sections.push(section("状态", jsonBlock(data.result.state)),
-      section("期望输入", jsonBlock(data.result.expected_input)),
-      section("输出", jsonBlock(data.result.outputs)));
-    const pictures = drawings(data.result.outputs);
+    sections.push(section("回复文字", el("div", "block text", data.result.text)),
+      section("会话", el("div", "block text", data.result.session === "ended" ? "本局结束" : "继续")));
+  }
+  if (row.kind === "device") {
+    sections.push(section("设备操作", jsonBlock(data.output)));
+    const pictures = drawings([data.output]);
     if (pictures) sections.push(section("屏幕图案", pictures));
   }
   if (data.error && !data.cancelled) sections.push(section("错误", el("div", "block error", data.error)));

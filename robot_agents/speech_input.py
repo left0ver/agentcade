@@ -28,7 +28,6 @@ class SpeechInput:
                 return
             self.busy = True
             self.input_speaking = False
-            context = self.agent.context_at(message.started_at)
             self.events.append({
                 "type": "recognized", "time": time.monotonic(),
                 "started_at": message.started_at, "text": message.text,
@@ -37,7 +36,7 @@ class SpeechInput:
             turn_id = observability.user_input(
                 message.text, message.started_at, message.ended_at, message.sent_until,
             )
-            messages.put_nowait((message, context, turn_id))
+            messages.put_nowait((message, turn_id))
 
         async def frames():
             async for frame in audio:
@@ -47,11 +46,11 @@ class SpeechInput:
 
         async def process():
             while True:
-                message, context, turn_id = await messages.get()
+                message, turn_id = await messages.get()
                 try:
                     await self.microphone.pause(owner=self)
                     with observability.turn(turn_id):
-                        completion = await self.agent.receive_utterance(message.text, *context)
+                        completion = await self.agent.receive(message.text)
                     if completion is not None:
                         await asyncio.shield(completion)
                 finally:

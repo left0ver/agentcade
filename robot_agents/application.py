@@ -2,20 +2,20 @@ import asyncio
 from contextlib import aclosing
 
 from observability.server import serve
+from robot_agents.game_client import connect_games
 from robot_agents.main_agent import MainAgent
 from robot_agents.microphone import MicrophoneInput
 from robot_agents.output import OutputCoordinator
 from robot_agents.protocol import Presentation
 from robot_agents.speech_input import SpeechInput
-from robot_agents.transport import connect_games
 
 
 class RobotApplication:
-    def __init__(self, app, settings, games):
+    def __init__(self, app, settings, games, microphone, output):
         self.app, self.settings = app, settings
-        self.input = MicrophoneInput(app.robot)
+        self.input = microphone
         self.agent = MainAgent(settings, games)
-        self.output = OutputCoordinator(app, settings, self.input)
+        self.output = output
         self.listener = None
 
     async def listen(self, ready):
@@ -64,9 +64,11 @@ class RobotApplication:
 
 
 async def run_application(app, settings):
+    microphone = MicrophoneInput(app.robot)
+    output = OutputCoordinator(app, settings, microphone)
     async with (
         serve(settings.observability_port) as url,
-        connect_games(settings.game_catalog) as games,
+        connect_games(settings.game_catalog, output.execute) as games,
     ):
         app.logger.info("可观测性页面：%s", url)
-        await RobotApplication(app, settings, games).run()
+        await RobotApplication(app, settings, games, microphone, output).run()

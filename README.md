@@ -12,12 +12,12 @@
 
 - 每局 5 题，每题 2 次机会，答对得 1 分，同一局动物不重复
 - 最近 72 小时出现过的动物、同义名称和相同图案不会重复，满 72 小时后可以再次出题；重启程序后仍然保留有效历史
-- 答对时点头，答错时摇头，动作与反馈语音同时进行，完成后回到居中姿态
+- 答对或答错时，机器人会用点头、摇头或表情反馈，动作完成后回到居中姿态
 - 说“提示”要线索，每题 3 条，不占机会；第一次答错也会给一条
 - 答题结束后说“下一题”继续；答题期间说“下一题”跳过，说“结束游戏”退出
-- 画图要等一会儿，这段时间可以随便聊天，聊天不算答题
+- 画图要等一会儿，这段时间可以随便聊天，聊天不算答题；和游戏有关的话等画完再说，想退出可以直接说“结束游戏”
 
-机器人说话和执行答题反馈动作时不收音，语音与动作都完成后恢复收音。
+机器人说话时不收音，播报完成后恢复收音。
 
 ## 猜数字
 
@@ -46,8 +46,8 @@ uv run watcherobot app run .
 | 配置文件 | 用途 |
 | --- | --- |
 | `robot_agents/.env` | 主 Agent 的文字 LLM、工具调用、ASR、TTS、音色和游戏目录路径 |
-| `games/guess_animal/.env` | 绘图模型、Jev、置信度和预计绘图时间 |
-| `games/guess_number/.env` | 猜数字语义理解模型 |
+| `games/guess_animal/.env` | 你画我猜的游戏 Agent 与绘图模型、Jev、置信度和预计绘图时间 |
+| `games/guess_number/.env` | 猜数字的游戏 Agent 模型 |
 
 | 变量 | 用途 |
 | --- | --- |
@@ -81,26 +81,27 @@ LLM_EXTRA_BODY_JSON={"thinking":{"type":"enabled"},"reasoning_effort":"low"}
 
 更换服务时，将 `LLM_BASE_URL`、`LLM_API_KEY`、`LLM_MODEL_NAME` 改成目标服务的配置。这三项必须填写，接口需要支持 JSON 对象输出和 function calling。`LLM_EXTRA_BODY_JSON` 默认是 `{}`，用于填写所选服务支持的可选参数，如思考模式、输出长度或服务等级。它不能覆盖模型、消息、响应格式、流式模式或工具参数。`LLM_TIMEOUT_SECONDS` 控制单次调用超时，默认 180 秒。
 
-修改配置后重新启动应用。本地游戏的 A2A 等待时间为该游戏的模型超时加 30 秒。远程游戏在 `games.json` 中单独配置 `timeout_seconds`，默认 210 秒。
+修改配置后重新启动应用。本地游戏的 A2A 等待时间为该游戏模型超时的三倍加 30 秒。远程游戏在 `games.json` 中单独配置 `timeout_seconds`，默认 210 秒。
 
-生成失败或超时会直接报错。每次生成的 JSON 和去重记录存在 `.artifacts/`，重启后仍然有效。
+题目生成失败或超时会自动重试，最多三次，仍然失败时机器人会请用户再试一次。每次生成的 JSON 和去重记录存在 `.artifacts/`，重启后仍然有效。
 
 你画我猜的生成提示词要求模型优先选择常见动物，并使用常用、容易读写的名称和别名，避免名称中含有不常见的生僻字。
 
 ## 可观测性
 
-应用运行期间打开 `http://127.0.0.1:8790` 查看实时轨迹，端口由 `OBSERVABILITY_PORT` 设置，服务只监听本机。端口上已有其他服务时应用启动失败并提示修改端口。页面按轮次列出四类记录，点击任意一行在右侧查看完整输入和输出：
+应用运行期间打开 `http://127.0.0.1:8790` 查看实时轨迹，端口由 `OBSERVABILITY_PORT` 设置，服务只监听本机。端口上已有其他服务时应用启动失败并提示修改端口。页面按轮次列出记录，点击任意一行在右侧查看完整输入和输出：
 
 | 记录 | 内容 |
 | --- | --- |
 | 用户 | ASR 的最终识别文字，每条开启一轮 |
-| 主 Agent · 回复 | 主 Agent 不经过游戏、直接回复用户的文字；游戏播报在 A2A 结果中 |
+| 主 Agent · 回复 | 主 Agent 直接回复用户的聊天文字 |
 | 主 Agent · 工具、游戏 Agent · 工具 | 各自发起的工具调用，包含完整参数、返回或错误、耗时 |
-| A2A →、A2A ← | 主 Agent 发给游戏的 `GameRequest`，以及游戏返回的进度消息和最终 `GameResult` |
+| A2A →、A2A ← | 主 Agent 发给游戏的 `GameInput`，以及游戏返回的每一条 `GameReply`：中间回复和最后一条回复 |
+| 设备执行 | 实际播报、绘图、表情、动作与完成状态，关联发起操作的游戏工具 |
 
-游戏结果中带有图案时，检查器按机器人屏幕的样式把它画出来。检查器底部的关联记录列出上级和下级，点击即可跳转。一次 A2A 请求及其引发的游戏侧工具调用归入发起它的那一轮，图案生成这类较晚返回的结果也归回原来那一轮。程序退出时自动发送的 `end` 显示在“轮次之间”。远程游戏只显示 A2A 请求和结果。
+设备记录带有图案时，检查器显示对应笔画。A2A 回复展示面向用户的文字和本局是否结束，可与主 Agent 的播报原文核对。检查器底部列出关联的上级和下级记录，点击即可跳转。一次 A2A 请求及其游戏工具、设备执行均归入发起请求的那一轮。程序退出时自动发送的 `end` 显示在“轮次之间”。远程游戏的设备 trace 由游戏部署方记录。
 
-事件只保存在内存中，保留最近 2000 条，重启后清空；不保存录音，也不写入磁盘。页面最多显示最近 3000 条记录，断线后保留已收到的记录并自动重连，应用重启后在原记录之后继续显示新的运行。事件包含对话内容，不包含密钥。
+应用事件在内存中保留最近 2000 条。页面最多显示最近 3000 条记录，断线后保留已收到的记录并自动重连。事件包含对话内容，不包含密钥。
 
 每一轮的标题显示从用户说完到最后一条记录的耗时，时间线一列画出各条记录在这一轮中的起止位置：工具调用和 A2A 请求是时间段，其余记录是时间点。页面顶部可以搜索记录、收起或展开全部轮次；收起后每轮显示用户原话和记录条数。上下方向键切换选中的记录。
 
@@ -124,23 +125,27 @@ flowchart TD
     Main -->|A2A JSON-RPC| Number[猜数字 Agent]
     Main -->|A2A JSON-RPC| Extension[新增游戏 Agent]
     Animal --> Drawing[绘图 LLM 与 Jev]
-    Animal --> Result[GameResult 与 Presentation]
+    Animal --> Result[一条或多条面向用户的回复]
     Number --> Result
     Extension --> Result
-    Main --> Output[统一输出队列]
+    Main --> Queue[聊天与游戏回复输出队列]
+    Queue --> Output[公共设备执行模块]
+    Animal --> Output
+    Number --> Output
+    Extension --> Output
     Result --> Main
     Output -->|聊天与游戏播报文本| Speech[Qwen TTS]
     Speech --> Audio[SDK PCM 音频播放]
     Output --> Device[屏幕、表情、头部动作]
 ```
 
-主 Agent 使用持续的 ASR WebSocket 会话识别麦克风语音，由 ASR 服务判定说话结束。识别结果携带说话开始时间，用于关联当时的游戏会话和题目版本。主 Agent 根据原话、历史、当前游戏状态和期望的下一步输入，调用 `list_games`、`start_game`、`end_game`、`send_message`。每轮模型调用都会将当前已注册游戏的名称、ID、别名和介绍按目录顺序写入系统提示词，新增游戏通过注册即可使用。普通聊天由主 Agent 直接回复，游戏介绍和播报使用简短的日常口语。
+主 Agent 使用持续的 ASR WebSocket 会话识别麦克风语音，由 ASR 服务判定说话结束。主 Agent 根据原话、历史和当前游戏，直接回答，或者调用 `list_games`、`start_game`、`end_game`、`send_message`。每轮模型调用都会将当前已注册游戏的名称、ID、别名和介绍按目录顺序写入系统提示词，新增游戏通过注册即可使用。普通聊天由主 Agent 直接回复，游戏介绍和播报使用简短的日常口语。
 
-游戏 Agent 负责规则、题目、提示、答案判定、计分和正常结束条件。游戏返回的播报原文进入输出队列，与聊天回复统一交给 TTS 合成音频。聊天期间游戏会话、题目和回答次数保持不变，后续游戏输入直接交给当前游戏。用户说“继续游戏”时，游戏返回当前进度。等待用户输入期间没有计时提醒、机会扣除或自动结束；网络请求超时继续作为通信异常处理。
+主 Agent 通过 A2A 给游戏 Agent 发一条消息，游戏 Agent 把它当作用户输入，回复一条或多条要播报的话，主 Agent 原样交给 TTS。第一条回复播完后恢复收音，其余回复到达时继续播报。游戏还在处理上一条输入时，新的游戏输入不会转发，主 Agent 会请用户稍等。消息格式见 [通信设计](docs/main-agent-game-a2a-design.md)。
 
-每个游戏注册自己的模型工具，通过 `send_message` 交付操作反馈。每次 A2A JSON 回复必须包含 `state` 和 `expected_input`；主 Agent 保存这些字段供后续模型调用使用。完整工具名称、参数和消息示例见 [通信设计](docs/main-agent-game-a2a-design.md)。
+游戏 Agent 是由 `SKILL.md` 驱动的 ReAct Agent。`SKILL.md` 写明规则和整体流程，模型按流程连续调用游戏自己的工具：规则工具返回题目、提示、答案判定和计分等事实，设备工具直接执行绘图、表情和动作。耗时操作之前，模型用 `say` 先说一句话。聊天期间游戏状态保持不变，等待用户输入期间没有计时提醒、机会扣除或自动结束。
 
-本地游戏通过官方 `a2a-sdk` 启动仅监听 `127.0.0.1` 的 HTTP 服务，并通过 Agent Card 发现。请求通过 A2A Task 执行，游戏 Agent 可以在流式状态消息中发送进度和展示内容，完成时通过 artifact 交付结果，退出时取消进行中的任务。`context_id` 标识一局游戏，`request_id` 用于请求去重，`revision` 拒绝已经过期的题目输入。主 Agent 在输出完成前保留当前游戏的占用状态。
+本地游戏通过官方 `a2a-sdk` 启动仅监听 `127.0.0.1` 的 HTTP 服务，并通过 Agent Card 发现。`context_id` 标识一局游戏，同一局的请求逐条处理；`end` 会取消正在处理的请求。主 Agent 收到本局结束的回复后清除当前会话。
 
 - **图案**：模型输出动物名、别名、3 条提示和笔画坐标，经 Pydantic 校验后用 SDK 的矢量配件逐笔显示。设备上限是 12 条笔画、192 个点。重名、提示里带答案、笔画和以前完全相同的结果都会被拒绝。
 - **表情**：`robot_agents/assets/emojis/` 里的三个 SVG 转成白色矢量笔画，分别用于生成中、答对、答错。生成中的进度条分成十格，按 `DRAWING_ESTIMATE_SECONDS` 估算，每经过预计时间的十分之一增加一格，等待结果时最多显示九格。生成完成后显示满格，再绘制动物。每次进度变化使用 `expression_runtime.start()` 提交完整图案和显示参数，一次生成最多提交 11 个进度画面。`ProgressDisplay` 管理计时和任务标识，显示命令串行执行，退出后旧进度请求失效。
@@ -153,15 +158,18 @@ flowchart TD
 | `app.py` | SDK 入口 |
 | `robot_agents/device.py` | 设备启动确认、音频发送顺序与设备状态记录 |
 | `robot_agents/application.py` | 收音、主 Agent 与输出队列的运行周期 |
-| `robot_agents/speech_input.py` | 持续 ASR 输入、语音增益、识别结果路由与输入版本 |
+| `robot_agents/speech_input.py` | 持续 ASR 输入、语音增益和识别结果路由 |
 | `robot_agents/tools.py` | 工具注册、JSON Schema、参数校验和执行记录 |
-| `robot_agents/game_tools.py` | 游戏消息工具和单次请求管理 |
-| `robot_agents/main_agent.py` | 主 Agent 决策、聊天历史、单游戏限制与 A2A Client 调用 |
-| `robot_agents/transport.py` | 游戏注册、Agent Card、本地服务和 A2A HTTP 通信 |
-| `robot_agents/protocol.py` | Pydantic 请求、结果、公开状态与设备输出 schema |
+| `robot_agents/protocol.py` | 主 Agent 与游戏 Agent 的统一通信格式、游戏声明和设备输出 schema |
+| `robot_agents/main_agent.py` | 主 Agent 决策、聊天历史、单游戏限制和游戏回复的播报 |
+| `robot_agents/game_client.py` | 主 Agent 一侧：游戏注册、Agent Card 校验和 A2A 回复流 |
+| `robot_agents/game_server.py` | 游戏一侧：本地 A2A 服务、会话与请求的顺序和取消 |
+| `robot_agents/task_store.py` | 已完成 A2A Task 的保留数量 |
+| `robot_agents/skill.py` | `SKILL.md` 的读取与校验 |
+| `robot_agents/skill_agent.py` | 所有游戏共用的 ReAct 运行时、`say` 和公共设备工具 |
 | `robot_agents/output.py` | 统一播报、屏幕、表情、动作与麦克风管理 |
-| `games/guess_animal/agent.py` | 你画我猜入口 `GameAgent` |
-| `games/guess_number/agent.py` | 猜数字入口 `GameAgent` |
+| `games/<game_id>/SKILL.md` | 游戏声明、规则和流程 |
+| `games/<game_id>/agent.py` | 游戏入口 `GameAgent`：状态和工具 |
 | `games/<game_id>/config.py` | 游戏独立配置读取与检查 |
 | `games.json` | 游戏目录 |
 | `games/guess_animal/game.py` | 出题、计分、提示 |
@@ -184,15 +192,40 @@ flowchart TD
 
 ## 添加游戏
 
-每个游戏位于 `games/<game_id>/`，目录包含 `__init__.py`，统一入口文件为 `agent.py`，入口类为 `GameAgent`。游戏专用模块放在对应游戏目录内；公共语音、模型和显示能力位于 `robot_agents/`。新增游戏实现以下接口：
+每个游戏位于 `games/<game_id>/`，目录包含 `__init__.py`、`SKILL.md`、`.env.example` 和入口文件 `agent.py`。游戏专用模块放在对应游戏目录内；公共语音、模型和显示能力位于 `robot_agents/`。
 
-- `descriptor: GameDescriptor` 声明唯一 ID、名称、玩法描述、别名和设备能力。
+`SKILL.md` 的 frontmatter 声明游戏，正文写规则和流程，启动时整体写入游戏 Agent 的系统提示词：
+
+```markdown
+---
+id: guess_number
+name: 猜数字
+aliases: [数字游戏, 猜数]
+description: 我会选一个1到20的整数，你来猜，最多有五次机会。
+required_capabilities: [motion]
+---
+
+## 规则
+
+……
+
+## 流程
+
+### 开局（event 为 start）
+
+调用 start_game，然后告诉用户数字范围和机会数，请他开始猜。
+```
+
+`agent.py` 的入口类是 `GameAgent`，继承 `robot_agents.skill_agent.SkillAgent`：
+
+- `skill = Skill.load(Path(__file__).with_name("SKILL.md"))` 读取游戏声明和流程。
 - `load_settings()` 读取本游戏目录的 `.env`，返回包含 `llm: LLMSettings` 的游戏配置；其他游戏专用配置由游戏自行定义。
-- `__init__(settings)` 创建独立游戏状态与模型客户端。
-- `async handle(request: GameRequest, notify: GameNotify) -> GameResult` 处理 `start`、`input`、`end`。游戏 Agent 理解用户原话并调用自己的操作，通过 `await notify(result)` 发送进度和展示内容，返回本次请求的最终结果。
-- `async close()` 释放模型连接和游戏资源。
+- `__init__(settings, device)` 调用父类构造函数，创建游戏状态。`device` 是异步设备执行函数，`await device(Presentation(...))` 执行图案、表情和动作。
+- `tools(turn)` 返回本游戏的工具。`turn.text` 是用户原话，`await turn.say(text)` 立刻回复一句话，`turn.end_session()` 标记本局结束。需要表情和动作时加入 `device_tools(self.device)`。
+- `state()` 返回当前状态快照，每轮写入系统提示词，不能包含未揭晓的答案。
+- `close()` 释放游戏资源，需要时覆盖并调用父类实现。
 
-`GameResult.state` 描述阶段、状态、可用指令、版本和是否继续。需要语音、图案或动作时返回 `Presentation`。结束时设置 `active=false`，需要清除图案时返回 `clear=true`。游戏应校验输入版本；无法理解游戏输入时返回澄清消息，保持题目和回答次数。聊天分类由主 Agent 负责。
+工具返回可以转成 JSON 的事实，例如判定结果、提示和剩余次数，由模型组织成回复。无法执行的操作返回带 `outcome` 的结果，模型据此向用户说明。
 
 把模块加入 `games.json`，重新启动应用：
 
@@ -204,9 +237,9 @@ flowchart TD
 }
 ```
 
-`games/guess_number/agent.py` 是完整示例。增加使用现有语音、屏幕和动作能力的游戏，只需要新增游戏目录和注册配置，主 Agent 的提示词、选择逻辑和输出处理自动使用游戏声明。
+`games/guess_number/` 是完整示例。增加使用现有语音、屏幕和动作能力的游戏，只需要新增游戏目录和注册配置，主 Agent 的提示词、选择逻辑和输出处理自动使用游戏声明。
 
-独立部署的游戏可以配置 `{"kind":"remote","id":"my_game","url":"https://example.com"}`。服务需要提供 A2A Agent Card、支持流式响应的 JSON-RPC 接口，以及 ID 对应且标记 `desktop-game/3` 的 skill。设备能力通过该 skill 的 `capability:motion` 等 tag 声明；请求与结果遵循 `robot_agents/protocol.py`。当前远程连接使用公开 HTTP/HTTPS 接口，认证由部署环境提供。
+独立部署的游戏可以配置 `{"kind":"remote","id":"my_game","url":"https://example.com"}`。服务提供 A2A Agent Card、流式 JSON-RPC 接口，以及标记 `desktop-game/5` 的 skill，并按 [通信设计](docs/main-agent-game-a2a-design.md) 收发消息。部署方通过 `serve_game(factory, settings, device)` 注入真实设备执行函数。设备能力通过 `capability:motion` 等 tag 声明，认证由部署环境提供。
 
 ## License
 

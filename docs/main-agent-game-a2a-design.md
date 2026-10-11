@@ -1,133 +1,107 @@
 # 主 Agent 与游戏 Agent 通信设计
 
-## 模型与工具
+## 职责
 
-主 Agent 使用 `robot_agents/main_agent.py` 注册的四个工具选择游戏、管理会话和发送消息。普通聊天由主 Agent 直接回答。游戏 Agent 通过自己的工具处理规则、出题、提示、回答、计分和结束。
+主 Agent 通过机器人麦克风和 ASR 取得用户原话，直接回答普通聊天，或者调用 `list_games`、`start_game(game_id)`、`end_game`、`send_message(text)`。游戏相关的输入原样转给游戏 Agent，游戏 Agent 的回复经 TTS 由机器人播放。
 
-主 Agent 每轮根据当前已连接的游戏重新生成系统提示词，其中包含按注册顺序排列的游戏 ID、名称、别名、介绍和设备能力。目录内容作为游戏资料使用。`list_games` 工具读取同一份注册结果，用户可以按名称、别名或目录中的编号选择游戏。介绍与播报使用简短的日常口语，进度查询直接说明正在准备图案、剩余机会或下一题的操作方式。
+每个游戏 Agent 是一个由 `SKILL.md` 驱动的 ReAct Agent：`SKILL.md` 规定规则和整体流程，模型按流程调用游戏自己的工具。规则、状态、判定、计分和设备操作都在游戏 Agent 内部，主 Agent 只知道当前在玩哪个游戏、这一局是否还在继续。
 
-`robot_agents/tools.py` 保存工具名称、描述、Pydantic 输入模型和执行函数。输入模型直接生成 JSON Schema。工具执行前校验参数，执行错误向调用方传播。每次调用记录名称、参数和结果，保存在 Agent 的 `last_tool_calls` 中。
+## 通信格式 `desktop-game/5`
 
-全部 Agent 使用 OpenAI 兼容接口，通过 Chat Completions 的 `tools`、`tool_calls` 和 `tool` 消息执行工具循环。模型返回工具名称和参数后，`ToolRegistry` 校验参数并执行对应函数，执行结果作为 `tool` 消息继续交给模型。各 Agent 独立配置接口地址、密钥、模型名称和请求参数。
+主 Agent 发一条消息，游戏 Agent 把它当作用户输入，回复一条或多条要播报的话。两个方向都用 A2A 的 DataPart 承载 JSON，模型定义在 `robot_agents/protocol.py`。
 
-## 主 Agent 工具
-
-所有输入 schema 都是 JSON object，`additionalProperties` 为 `false`。无参数工具使用 `{"type":"object","properties":{},"additionalProperties":false}`。
-
-| 名称 | 描述 | 输入 |
-| --- | --- | --- |
-| `list_games` | 列出游戏 ID、名称、介绍、别名和设备能力 | 无参数 |
-| `start_game` | 建立会话，发送 A2A `start` | `game_id: string`，必填且非空 |
-| `end_game` | 取消未完成的请求，发送 A2A `end` | 无参数 |
-| `send_message` | 将用户完整原文发送为 A2A `input` | `text: string`，必填且非空 |
-
-`game_id` 必须来自已注册游戏；`text` 必须与本轮用户输入完全一致。`context_id`、`request_id` 和 `revision` 由运行程序管理。主 Agent 每轮最多执行一次会话操作，同时最多保持一局游戏。游戏相关工具的返回值包含 `delivered`、`state` 和 `expected_input`。游戏反馈已经进入输出队列后，主 Agent 不重复播报。
-
-## 你画我猜工具
-
-| 名称 | 描述 | 输入 |
-| --- | --- | --- |
-| `start_game` | 初始化五题游戏并生成第一题 | 无参数 |
-| `get_rules` | 查询规则 | 无参数 |
-| `get_game_state` | 查询进度、得分和下一步输入要求 | 无参数 |
-| `get_hint` | 返回下一条提示，更新提示记录 | 无参数 |
-| `submit_answer` | 判定动物答案，更新得分、机会和题目状态 | `text: string`，必填且必须为用户完整原文 |
-| `skip_question` | 公布当前答案并生成下一题；最后一题结束整局 | 无参数 |
-| `next_question` | 当前题目结束后生成下一题 | 无参数 |
-| `end_game` | 结束游戏并返回得分 | 无参数 |
-| `send_message` | 发送操作产生的消息、图案和动作，可补充说明 | 公共消息输入 |
-
-`submit_answer` 内部使用 JEV 判定动物名称及别名。提示、跳题等工具由游戏 Agent 的模型选择。绘图生成继续使用独立的结构化输出与校验。生成期间通过 A2A 状态事件报告进度，并允许查询规则和状态。`end` 请求会取消未完成的生成与模型调用。题目结束后等待用户说下一题；最后一题结束时返回整局得分。
-
-## 猜数字工具
-
-| 名称 | 描述 | 输入 |
-| --- | --- | --- |
-| `start_game` | 随机选择秘密整数，初始化五次机会 | 无参数 |
-| `get_rules` | 查询规则 | 无参数 |
-| `get_game_state` | 查询次数和下一步输入要求 | 无参数 |
-| `get_hint` | 返回秘密整数的奇偶提示 | 无参数 |
-| `submit_guess` | 判断猜测大小，更新机会和游戏状态 | `number: integer`，必填，范围 1 至 20 |
-| `end_game` | 结束游戏 | 无参数 |
-| `send_message` | 发送操作反馈，可补充文字、表情和动作 | 公共消息输入 |
-
-公共消息输入：
+主 Agent → 游戏 Agent（`GameInput`）：
 
 ```json
-{
-  "type": "object",
-  "additionalProperties": false,
-  "properties": {
-    "text": {"type": "string", "maxLength": 500, "default": ""},
-    "expression": {"anyOf": [{"type": "string", "enum": ["happy", "sorry", "thinking"]}, {"type": "null"}], "default": null},
-    "gesture": {"anyOf": [{"type": "string", "enum": ["nod", "shake_head"]}, {"type": "null"}], "default": null}
-  }
-}
+{"protocol": "desktop-game/5", "kind": "message", "text": "我猜10"}
 ```
 
-操作工具产生的图案、答案反馈和动作保存在当前请求中。模型调用 `send_message` 时一并发送；`text` 留空即可保留完整原文。游戏状态和下一步输入要求由游戏代码生成，每次回复均包含。
+| 字段 | 说明 |
+| --- | --- |
+| `kind` | `start` 开局，`message` 局内输入，`end` 结束本局 |
+| `text` | 用户原话，保持字词和标点；程序退出时发送的 `end` 可以为空 |
 
-## A2A 消息
-
-应用数据协议为 `desktop-game/3`，请求位于 A2A Message 的 DataPart 中，使用 `start`、`input`、`end` 三种 action。A2A `context_id` 标识游戏会话。以下为猜数字输入的应用数据示例：
+游戏 Agent → 主 Agent（`GameReply`）：
 
 ```json
-{
-  "protocol": "desktop-game/3",
-  "request_id": "request-002",
-  "action": "input",
-  "text": "我猜10",
-  "revision": 1
-}
+{"protocol": "desktop-game/5", "text": "比十还大一些，你还有四次机会。", "session": "active"}
 ```
 
-游戏回复的 `state` 和 `expected_input` 均为必填字段。示例中的数值由当前游戏决定：
+| 字段 | 说明 |
+| --- | --- |
+| `text` | 1 至 500 字，主 Agent 原样播报 |
+| `session` | `active` 表示本局继续，`ended` 表示本局结束；只有一次请求的最后一条回复可以是 `ended` |
 
-```json
-{
-  "protocol": "desktop-game/3",
-  "state": {
-    "phase": "等待猜测",
-    "status": "已经猜了1次，剩余4次机会。",
-    "commands": ["猜一个1至20的整数", "提示", "结束游戏"],
-    "revision": 2,
-    "active": true,
-    "details": {"attempts": 1, "remaining_attempts": 4}
-  },
-  "expected_input": {
-    "kind": "answer",
-    "description": "请猜一个1至20的整数，也可以请求提示或结束游戏。",
-    "examples": ["我猜10", "给我提示", "结束游戏"]
-  },
-  "outputs": [{"text": "猜小了，还有4次机会。", "expression": "sorry", "gesture": "shake_head"}]
-}
-```
+## A2A 映射
 
-`expected_input.kind` 支持 `answer`（等待回答）、`command`（等待下一题等指令）、`wait`（正在生成）和 `none`（已经结束）。`description` 解释输入要求，`examples` 提供示例。游戏代码避免在公开状态中包含秘密答案。
+| 方向 | A2A 载体 |
+| --- | --- |
+| 主 → 游戏 | 流式 `SendMessage`，`Message` 的 `context_id` 标识一局游戏，`message_id` 是请求 ID，`parts` 是一个 `GameInput` |
+| 游戏 → 主，中间回复 | `TaskStatusUpdateEvent`，状态 `working`，`status.message.parts` 是一个 `GameReply`，零到多条 |
+| 游戏 → 主，最后一条回复 | `TaskStatusUpdateEvent`，状态 `completed`，`status.message.parts` 是一个 `GameReply`，恰好一条 |
+| 出错 | Task 进入 `failed`，主 Agent 向用户说明并继续运行 |
 
-主 Agent 保存游戏回复，在下一轮模型请求中提供 `state` 和 `expected_input`。`state.details` 支持嵌套 JSON 数据，可以包含棋盘、玩家列表和其他游戏状态。新的游戏能够使用自己的状态字段和输入说明。新增游戏只需注册并遵循公共 A2A 格式。
-
-## 输出与会话
+一次请求至少有一条回复。回复是不是最后一条由 Task 状态决定。Agent Card 声明 `streaming=true`，skill 的 ID 是游戏 ID，标签包含 `desktop-game/5` 和 `capability:<设备能力>`，`examples` 是游戏别名。
 
 ```mermaid
-flowchart TD
-    User[用户语音] --> ASR[ASR]
-    ASR --> Main[主 Agent 模型]
-    Main --> Tools[list_games / start_game / end_game / send_message]
-    Tools --> A2A[A2A Client]
-    A2A --> Game[游戏 Agent 模型]
-    Game --> Operations[游戏操作工具]
-    Operations --> Message[send_message]
-    Message --> Result[state / expected_input / outputs]
-    Result --> Output[主 Agent 输出队列]
-    Main -->|普通聊天| Output
-    Output --> Device[TTS / 屏幕 / 表情 / 动作]
+sequenceDiagram
+    participant U as 用户
+    participant M as 主 Agent
+    participant G as 游戏 Agent
+    participant D as 机器人
+    U->>M: 麦克风 → ASR → 原话
+    M->>G: GameInput{kind, text}
+    G->>M: 中间回复 GameReply（working）
+    M->>D: TTS 播放
+    G->>D: 游戏工具：画图、表情、动作
+    G->>M: 最后一条 GameReply（completed）
+    M->>D: TTS 播放
 ```
 
-每个请求使用 A2A Task，进度通过状态事件发送，最终结果通过 artifact 返回。`request_id` 用于请求去重，`revision` 用于拒绝过期输入。语音开始时间关联当时的会话和已经展示的题目版本。结束反馈展示完成后，主 Agent 清除会话。
+## 游戏 Agent
 
-等待用户输入期间保留游戏状态，没有回答计时提醒或自动结束。每个本地游戏服务保留最近 64 个已结束 A2A Task；进行中的任务继续保留。调用错误直接传播，失败不会被标记为成功。
+`robot_agents/skill_agent.py` 的 `SkillAgent` 是所有游戏共用的运行时，子类提供三样东西：
 
-## 验证
+| 成员 | 作用 |
+| --- | --- |
+| `skill` | `Skill.load("SKILL.md")`，frontmatter 是游戏声明，正文是规则和流程 |
+| `tools(turn)` | 这个游戏的工具 |
+| `state()` | 当前状态快照，每轮写入系统提示词，不能包含未揭晓的答案 |
 
-单元测试检查工具输入、必填回复字段、游戏规则和配置。真实服务测试检查 OpenAI 兼容接口的工具调用记录、A2A 注册、请求去重、普通聊天、单游戏限制、取消生成、过期输入以及完整五题。运行记录保存在 `.artifacts/tests/`。
+处理一条输入时，系统提示词由公共提示词、`SKILL.md` 正文和状态快照组成，用户消息是 `{"event": kind, "user_text": text}`。模型可以连续调用工具，最终文本作为最后一条回复。本局的对话保留最近 16 轮。
+
+`turn` 提供 `kind`、`text`、`say(text)` 和 `end_session()`。运行时内置 `say` 工具，模型在耗时操作之前用它先说一句话，这句话立刻作为中间回复发给主 Agent。游戏自然结束时工具调用 `turn.end_session()`；收到 `end` 的那一轮结束后，本局一定结束。
+
+| 游戏 | 工具 |
+| --- | --- |
+| 你画我猜 | `start_game`、`get_hint`、`submit_answer(text)`、`skip_question`、`next_question`、`end_game`、`show_drawing`、`show_progress` |
+| 猜数字 | `start_game`、`get_hint`、`submit_guess(number)`、`end_game` |
+| 公共设备工具 | `show_expression(expression)`、`move_head(gesture)`、`clear_display` |
+
+动物答案由 JEV 判定，`submit_answer` 只接受用户完整原文，每条输入只判一次。设备工具通过构造时注入的设备执行函数直接操作机器人，执行完成后返回 `device_completed=true`。
+
+游戏服务按到达顺序逐条处理同一局的请求。`end` 到达时取消正在处理的那一轮，再执行结束流程。
+
+## 出错处理
+
+每次请求都要有一条可以播报的回复，出错时也一样。
+
+| 情况 | 处理 |
+| --- | --- |
+| 工具参数不合法或执行失败 | 结果以 `{"error": ...}` 交还给模型，由它重试或向用户说明 |
+| 游戏 Agent 的模型出错或没有给出回复 | 回复兜底的话，这一轮不写入记忆；`start` 和 `end` 同时结束本局 |
+| 收到 `start` 时上一局还在 | 关闭上一局，直接开始新的一局 |
+| 收到 `message` 或 `end` 时这一局已经不存在 | 回复 `session` 为 `ended` 的提示，主 Agent 据此清除会话 |
+| 请求本身失败（网络错误、Task `failed`） | 主 Agent 提示用户；`start` 和 `end` 清除会话，`message` 保留会话 |
+
+## 主 Agent
+
+`start_game` 建立新的 `context_id` 并发送 `start`，`send_message` 发送 `message`，`end_game` 取消未完成的请求后发送 `end`，三者都携带用户原话。
+
+发送后主 Agent 在后台读取回复流。每条回复排队播报，播完写入历史，角色为 `game_agent`。第一条回复播完这一轮就结束，麦克风恢复收音；其余回复到达后继续播报。最后一条回复的 `session` 为 `ended` 时清除当前游戏。
+
+游戏还在处理上一条输入时，`send_message` 不再转发，主 Agent 请用户稍等；聊天和 `end_game` 不受影响。
+
+## Trace
+
+trace 记录用户输入、主 Agent 和游戏 Agent 的工具调用、A2A 请求、每一条回复、播报文本和设备执行。游戏侧的记录通过请求 ID 归入发起请求的那一轮。已完成的 A2A Task 默认保留最近 64 个。

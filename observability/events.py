@@ -106,7 +106,7 @@ def turn(identifier):
 
 
 def reply(text):
-    """记录主 Agent 不经过游戏、直接回复用户的文字。"""
+    """记录主 Agent 将要播报的聊天或游戏回复。"""
     bus.emit("agent.reply", {"text": text})
 
 
@@ -134,17 +134,18 @@ class Exchange:
         self.request_id = request_id
         self.result = None
 
-    def update(self, result):
-        bus.emit("a2a.update", {"request_id": self.request_id, "result": result})
+    def update(self, reply):
+        """记录游戏在最后一条回复之前发来的中间回复。"""
+        bus.emit("a2a.update", {"request_id": self.request_id, "result": reply})
 
 
 @contextmanager
-def a2a_request(game, context_id, request):
+def a2a_request(game, context_id, request_id, request):
     started = time.monotonic()
-    exchange = Exchange(request.request_id)
-    bus.remember(request.request_id)
+    exchange = Exchange(request_id)
+    bus.remember(request_id)
     bus.emit("a2a.request", {
-        "request_id": request.request_id, "game_id": game.id, "game_name": game.name,
+        "request_id": request_id, "game_id": game.id, "game_name": game.name,
         "context_id": context_id, "request": request,
     })
     outcome = {}
@@ -156,7 +157,7 @@ def a2a_request(game, context_id, request):
         raise
     finally:
         bus.emit("a2a.result", {
-            "request_id": request.request_id, "ok": "result" in outcome, **outcome,
+            "request_id": request_id, "ok": "result" in outcome, **outcome,
             "duration_ms": elapsed_ms(started),
         })
 

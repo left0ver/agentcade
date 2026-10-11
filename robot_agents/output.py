@@ -2,6 +2,7 @@ import asyncio
 
 from watcherobot.errors import CommandError
 
+from observability.events import bus, failure, scope
 from robot_agents.audio_stream import PcmAudioPlayer, sdk_command
 from robot_agents.expressions import expression_vector
 from robot_agents.eyes import HIDDEN_EYES, STANDBY_EYES
@@ -18,6 +19,17 @@ class OutputCoordinator:
         self.display_lock = asyncio.Lock()
         self.progress = ProgressDisplay(self._show_vector, self.display_lock)
         self.speaking = False
+        self.output_lock = asyncio.Lock()
+
+    async def execute(self, output):
+        async with self.output_lock:
+            try:
+                await self.present(output)
+            except BaseException as error:
+                bus.emit("device.output", {"output": output, **failure(error)})
+                raise
+            else:
+                bus.emit("device.output", {"output": output, "completed": True})
 
     async def show_vector(self, path):
         async with self.display_lock:
@@ -71,10 +83,6 @@ class OutputCoordinator:
     async def stop_progress(self):
         await self.progress.cancel()
 
-    async def restore(self, path):
-        await asyncio.sleep(1.5)
-        await self.show_vector(path)
-
     async def present(self, output):
         if output.paths and not output.clear:
             await self.progress.finish()
@@ -91,22 +99,19 @@ class OutputCoordinator:
         await self.input.pause(owner=self)
         progress_token = None
         try:
+            audio = await self.speech.synthesize(output.text) if output.text else None
+            if output.progress_seconds:
+                progress_token = await self.progress.start()
+            elif output.expression:
+                await self.show_vector(expression_vector({
+                    "happy": "009", "sorry": "141", "thinking": "111",
+                }[output.expression]))
             async with asyncio.TaskGroup() as group:
                 async def on_start():
-                    nonlocal progress_token
-                    if output.progress_seconds:
-                        progress_token = await self.progress.start()
-                    elif output.expression:
-                        await self.show_vector(expression_vector({
-                            "happy": "009", "sorry": "141", "thinking": "111",
-                        }[output.expression]))
                     if output.gesture:
                         group.create_task(self.gesture(output.gesture))
-                    if output.restore_path:
-                        group.create_task(self.restore(output.restore_path))
 
                 if output.text:
-                    audio = await self.speech.synthesize(output.text)
                     self.last_text = output.text
                     self.app.logger.info("机器人：%s", output.text)
                     metrics = await self.audio.play(
@@ -123,15 +128,15 @@ class OutputCoordinator:
                 self.progress.advance(progress_token, output.progress_seconds)
         finally:
             self.speaking = False
-        self.input.resume(owner=self)
+            self.input.resume(owner=self)
 
     async def run(self, agent):
         while True:
             request = await agent.outputs.get()
             try:
-                for output in request.outputs:
-                    if agent.output_current(request):
-                        await self.present(output)
+                with scope(**request.trace_context):
+                    for output in request.outputs:
+                        await self.execute(output)
                 await agent.output_done(request)
             finally:
                 if not request.completed.done():

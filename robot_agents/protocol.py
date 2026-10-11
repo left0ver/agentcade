@@ -1,10 +1,11 @@
-from collections.abc import Awaitable, Callable
-from typing import Literal
-from uuid import uuid4
+from typing import Literal, TypeVar
 
-from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
+from a2a.helpers import new_data_part
+from a2a.types import Part
+from google.protobuf.json_format import MessageToDict
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-PROTOCOL_VERSION = "desktop-game/3"
+PROTOCOL_VERSION = "desktop-game/5"
 
 
 class Model(BaseModel):
@@ -24,46 +25,44 @@ class Presentation(Model):
     paths: list[str] = Field(default_factory=list)
     expression: Literal["happy", "sorry", "thinking"] | None = None
     gesture: Literal["nod", "shake_head"] | None = None
-    restore_path: str | None = None
     clear: bool = False
     progress_seconds: int | None = Field(default=None, gt=0)
 
 
-class PublicState(Model):
-    phase: str = "等待开始"
-    status: str = ""
-    commands: list[str] = Field(default_factory=list)
-    revision: int = Field(default=0, ge=0)
-    active: bool = True
-    details: dict[str, JsonValue] = Field(default_factory=dict)
+class GameInput(Model):
+    """主 Agent 发给游戏 Agent 的一条用户输入。"""
 
-
-class ExpectedInput(Model):
-    kind: Literal["answer", "command", "wait", "none"]
-    description: str = Field(min_length=1)
-    examples: list[str] = Field(default_factory=list)
-
-
-class GameRequest(Model):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=False)
-    protocol: Literal["desktop-game/3"] = PROTOCOL_VERSION
-    request_id: str = Field(default_factory=lambda: uuid4().hex)
-    action: Literal["start", "input", "end"]
-    text: str = ""
-    revision: int | None = Field(default=None, ge=0)
+    protocol: Literal["desktop-game/5"] = PROTOCOL_VERSION
+    kind: Literal["start", "message", "end"]
+    text: str = Field(default="", description="用户原话，保持字词和标点")
 
     @model_validator(mode="after")
-    def validate_input(self):
-        if self.action == "input" and (not self.text.strip() or self.revision is None):
-            raise ValueError("游戏输入需要原文和题目版本")
+    def validate_text(self):
+        # 程序退出时发送的 end 没有用户原话。
+        if self.kind != "end" and not self.text.strip():
+            raise ValueError("开局和局内输入需要用户原话")
         return self
 
 
-class GameResult(Model):
-    protocol: Literal["desktop-game/3"] = PROTOCOL_VERSION
-    state: PublicState
-    expected_input: ExpectedInput
-    outputs: list[Presentation] = Field(default_factory=list)
+class GameReply(Model):
+    """游戏 Agent 回给主 Agent 的一条播报内容，一次请求至少回复一条。"""
+
+    protocol: Literal["desktop-game/5"] = PROTOCOL_VERSION
+    text: str = Field(min_length=1, max_length=500, description="主 Agent 原样播报的面向用户回复")
+    session: Literal["active", "ended"] = Field(
+        default="active", description="本局是否继续，只有一次请求的最后一条回复可以是 ended",
+    )
 
 
-GameNotify = Callable[[GameResult], Awaitable[None]]
+Payload = TypeVar("Payload", GameInput, GameReply)
+
+
+def to_part(payload: GameInput | GameReply) -> Part:
+    return new_data_part(payload.model_dump(mode="json"))
+
+
+def from_parts(model: type[Payload], parts) -> Payload:
+    if len(parts) != 1 or not parts[0].HasField("data"):
+        raise ValueError("游戏消息必须包含唯一一个结构化数据 Part")
+    return model.model_validate(MessageToDict(parts[0].data))
