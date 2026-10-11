@@ -41,8 +41,8 @@ class RobotApplication:
                 await ready.wait()
                 game_names = "、".join(game.descriptor.name for game in self.agent.games.values())
                 greeting = (
-                    f"你好呀！现在可以玩{game_names}。想玩哪个？也可以和我聊聊天。"
-                    if game_names else "你好呀！现在还没有可玩的游戏，我们可以聊聊天。"
+                    f"你好呀，我是小懒！现在可以玩{game_names}。想玩哪个？也可以和我聊聊天。"
+                    if game_names else "你好呀，我是小懒！现在还没有可玩的游戏，我们可以聊聊天。"
                 )
                 await self.agent.emit([Presentation(
                     text=greeting,
