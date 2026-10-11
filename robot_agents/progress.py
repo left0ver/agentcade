@@ -1,10 +1,14 @@
 import asyncio
+import logging
 import math
 import time
 from collections.abc import Awaitable, Callable
 from contextlib import suppress
 
+from observability import describe
 from robot_agents.expressions import segmented_progress_vector
+
+logger = logging.getLogger(__name__)
 
 
 class ProgressDisplay:
@@ -50,8 +54,12 @@ class ProgressDisplay:
         task, self.task = self.task, None
         if task is not None:
             task.cancel()
-            with suppress(asyncio.CancelledError):
-                await task
+            try:
+                with suppress(asyncio.CancelledError):
+                    await task
+            except Exception as error:
+                # 进度画面只是提示，显示失败不影响后面的输出。
+                logger.warning("进度显示失败：%s", describe(error), exc_info=True)
 
     async def finish(self) -> None:
         await self.stop_timer()
@@ -70,4 +78,4 @@ class ProgressDisplay:
 
     async def check(self) -> None:
         if self.task is not None and self.task.done():
-            await self.task
+            await self.stop_timer()

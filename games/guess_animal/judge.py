@@ -11,7 +11,8 @@ class JevJudge:
             api_key=settings.typesafe_api_key,
             model=settings.jev_model,
             timeout=20,
-            retry=RetryPolicy(max_retries=0),
+            # 连接失败、超时、限流和服务端错误时重试，连同等待最多占用 30 秒。
+            retry=RetryPolicy(max_retries=2, timeout=30),
         )
         self.threshold = settings.confidence_threshold
 

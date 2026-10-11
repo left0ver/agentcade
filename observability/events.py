@@ -24,11 +24,18 @@ def encode(value):
     return value.model_dump(mode="json") if hasattr(value, "model_dump") else str(value)
 
 
+def describe(error):
+    """把异常整理成一行文字，任务组里的多个异常逐个列出。"""
+    if isinstance(error, BaseExceptionGroup):
+        return "；".join(describe(item) for item in error.exceptions)
+    return f"{type(error).__name__}: {error}"
+
+
 def failure(error):
     # 用户结束游戏会取消未完成的请求，页面把它和出错区分显示。
     if isinstance(error, asyncio.CancelledError):
         return {"error": "已取消", "cancelled": True}
-    return {"error": f"{type(error).__name__}: {error}"}
+    return {"error": describe(error)}
 
 
 class EventBus:

@@ -1,13 +1,18 @@
 import asyncio
+import logging
 
 from watcherobot.errors import CommandError
 
-from observability.events import bus, failure, scope
+from observability.events import bus, describe, failure, scope
 from robot_agents.audio_stream import PcmAudioPlayer, sdk_command
 from robot_agents.expressions import expression_vector
 from robot_agents.eyes import HIDDEN_EYES, STANDBY_EYES
 from robot_agents.progress import ProgressDisplay
 from robot_agents.speech import QwenSpeech
+
+logger = logging.getLogger(__name__)
+
+SYNTHESIS_ATTEMPTS = 3
 
 
 class OutputCoordinator:
@@ -83,6 +88,20 @@ class OutputCoordinator:
     async def stop_progress(self):
         await self.progress.cancel()
 
+    async def synthesize(self, text):
+        for attempt in range(1, SYNTHESIS_ATTEMPTS + 1):
+            try:
+                return await self.speech.synthesize(text)
+            except ValueError:
+                raise
+            except Exception as error:
+                # 语音服务偶尔连接失败或超时，重试仍然失败再放弃这一条。
+                if attempt == SYNTHESIS_ATTEMPTS:
+                    raise
+                logger.warning("语音合成失败，重试（%s/%s）：%s",
+                               attempt, SYNTHESIS_ATTEMPTS - 1, describe(error))
+                await asyncio.sleep(0.5 * attempt)
+
     async def present(self, output):
         if output.paths and not output.clear:
             await self.progress.finish()
@@ -99,7 +118,7 @@ class OutputCoordinator:
         await self.input.pause(owner=self)
         progress_token = None
         try:
-            audio = await self.speech.synthesize(output.text) if output.text else None
+            audio = await self.synthesize(output.text) if output.text else None
             if output.progress_seconds:
                 progress_token = await self.progress.start()
             elif output.expression:
@@ -134,9 +153,18 @@ class OutputCoordinator:
         while True:
             request = await agent.outputs.get()
             try:
+                completed = []
                 with scope(**request.trace_context):
                     for output in request.outputs:
-                        await self.execute(output)
+                        try:
+                            await self.execute(output)
+                        except Exception as error:
+                            # 一条输出失败只跳过这一条，后面的播报照常进行。
+                            logger.warning("输出失败，已跳过“%s”：%s",
+                                           output.text[:30], describe(error), exc_info=True)
+                            continue
+                        completed.append(output)
+                request.outputs = completed
                 await agent.output_done(request)
             finally:
                 if not request.completed.done():

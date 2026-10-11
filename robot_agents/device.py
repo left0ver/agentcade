@@ -29,6 +29,12 @@ class DeviceTransport(DaemonApplicationTransport):
     def start(self, *, timeout=15):
         super().start(timeout=timeout)
 
+    @property
+    def closed(self):
+        """应用与守护进程之间的通道已经结束，之后的设备指令都无法执行。"""
+        thread = self._thread
+        return thread is not None and not thread.is_alive()
+
     async def _on_channels_connected(self):
         self.device_ready.clear()
         async with asyncio.timeout(self.command_timeout):
@@ -59,6 +65,10 @@ class DeviceTransport(DaemonApplicationTransport):
 
 
 class DeviceContext(ApplicationContext):
+    @property
+    def connection_lost(self):
+        return self._transport.closed
+
     @classmethod
     def from_environment(cls):
         required = (

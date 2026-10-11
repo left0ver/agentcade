@@ -1,5 +1,5 @@
 import asyncio
-from contextlib import aclosing
+import logging
 
 from observability.server import serve
 from robot_agents.game_client import connect_games
@@ -20,8 +20,7 @@ class RobotApplication:
 
     async def listen(self, ready):
         self.listener = SpeechInput(self.settings, self.agent, self.input, self.app.logger)
-        async with aclosing(self.input.audio()) as audio:
-            await self.listener.run(audio, ready)
+        await self.listener.run(ready)
 
     async def run(self):
         required = {"expression.runtime.v3", "microphone", "audio.stream"}
@@ -49,6 +48,9 @@ class RobotApplication:
                     text=greeting,
                 )])
                 while not self.app.shutdown_requested:
+                    # 麦克风、识别和播报出错时各自恢复；通道断开后设备指令全部失效，只能退出。
+                    if self.app.connection_lost:
+                        raise RuntimeError("与机器人守护进程的连接已经断开，无法继续运行")
                     if (not self.output.speaking and not self.listener.busy
                             and not self.listener.input_speaking):
                         await self.agent.tick()
@@ -63,7 +65,17 @@ class RobotApplication:
                 await self.output.close()
 
 
+def route_logs(app):
+    """各模块的告警和错误写入应用日志，和运行记录出现在同一个地方。"""
+    for name in ("robot_agents", "games", "observability"):
+        target = logging.getLogger(name)
+        target.setLevel(logging.INFO)
+        target.propagate = False
+        target.handlers = list(app.logger.handlers)
+
+
 async def run_application(app, settings):
+    route_logs(app)
     microphone = MicrophoneInput(app.robot)
     output = OutputCoordinator(app, settings, microphone)
     async with (
