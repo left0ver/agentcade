@@ -104,39 +104,14 @@ LLM_EXTRA_BODY_JSON={"thinking":{"type":"enabled"},"reasoning_effort":"low"}
 
 每一轮的标题显示从用户说完到最后一条记录的耗时，时间线一列画出各条记录在这一轮中的起止位置：工具调用和 A2A 请求是时间段，其余记录是时间点。页面顶部可以搜索记录、收起或展开全部轮次；收起后每轮显示用户原话和记录条数。上下方向键切换选中的记录。
 
-## 测试
+## 检查
 
 ```bash
-uv run pytest -q
-uv run ruff check app.py robot_agents games observability scripts tests
+uv run ruff check app.py robot_agents games observability scripts
 uv run watcherobot app check .
 ```
 
-默认执行 `tests/unit` 中的单元测试，使用真实题目和音频样本，覆盖游戏规则、提示顺序、图案校验、表情、音频处理、配置校验和可观测性事件关联，不连接设备和模型服务。
-
-E2E 使用各 Agent 的 `.env` 调用真实 OpenAI 兼容接口并产生费用。真机测试需要连接机器人并停止游戏，将机器人放在 Mac 电脑扬声器附近，确保它能清楚收录电脑播放的声音。
-
-| 命令 | 检查内容 |
-| --- | --- |
-| `uv run pytest tests/e2e -m e2e -q` | 全部模型服务与真机 E2E |
-| `uv run pytest tests/e2e/test_agents.py -m e2e -q` | 真实 A2A HTTP、游戏注册、模型选择与聊天、单游戏限制、取消生成、完整五题、音频 → ASR → 工具调用 → 游戏 |
-| `uv run pytest tests/e2e/test_main_intent.py tests/e2e/test_speech.py -m e2e -q` | 主 Agent 工具选择、连续 ASR、退出后重新开始、语音输入与完整 A2A 交互 |
-| `uv run pytest tests/e2e/test_observability.py -m e2e -q` | 真实 TTS 音频 → 持续 ASR → 主 Agent → 猜数字，检查每轮的用户输入、工具调用和 A2A 事件关联，不连接设备 |
-| `uv run pytest tests/e2e/test_tools.py -m e2e -q` | OpenAI 兼容接口调用真实游戏工具，验证状态和下一步输入要求 |
-| `uv run pytest tests/e2e/test_services.py -m e2e -q` | 模型生成、历史保存、聊天上下文、Jev 分类、ASR → LLM → TTS |
-| `uv run pytest tests/e2e/test_robot.py -m e2e -q` | 真机，仅 macOS：完整五题语音游戏、提示、表情、计分、跳题、交流、结束及音频资源释放 |
-| `uv run pytest tests/e2e/test_robot.py -m e2e -k pcm_playback -q` | 真机：PCM 播放取消、再次播放和麦克风恢复 |
-| `uv run pytest tests/e2e/test_robot.py -m e2e -k repeated_audio -q` | 真机：连续 12 次取消播放、再次播放和麦克风恢复 |
-| `uv run pytest tests/e2e/test_a2a_connections.py -m e2e -q` | 本地 A2A 空闲连接与服务关闭后的后台任务释放 |
-| `uv run pytest tests/e2e/test_robot.py -m e2e -k expression -q` | 真机：三轮十格进度、语音播放、九格等待、完成与取消、旧任务失效 |
-| `uv run pytest tests/e2e/test_robot.py -m e2e -k answer_feedback -q` | 真机：答对点头、答错摇头、语音和表情同时反馈、动作取消与收音恢复 |
-| `uv run watcherobot app run scripts/eye_preview` | 真机：逐个预览眼型，不调模型 |
-
-真机 E2E 通过电脑扬声器发声、机器人麦克风收音，调用生产应用流程。它检查提示、答题、表情、计分、跳题、游戏期间聊天、播报期间暂停收音，以及完整五题结束后选择猜数字、拒绝直接切换和退出游戏。两个游戏均检查等待 65 秒期间保持状态且没有提醒。随后检查取消播放、再次播放和麦克风恢复。A2A 测试单独验证生成期间退出、旧会话输入拒绝和同时开始两个游戏；注册测试对共享模块计算文件摘要，验证增加游戏配置前后共享代码完全相同。语音服务测试将真实 TTS 音频交给 ASR，检查模型工具调用、聊天回复和 A2A 游戏结果，并合成播报音频。
-
-语音 E2E 明确选择 MacBook 扬声器，可以通过 `E2E_OUTPUT_DEVICE` 指定其他输出设备名称。测试期间应保持环境安静，静默检查会将外部声音引起的回复判定为失败。输出设备、最近 32 个麦克风会话和最近 128 条设备状态保存在测试报告中，机器人录音单独保存。SDK 后台任务出现未处理异常时，测试判定失败。
-
-每次 E2E 的音频、应用日志和报告保存到 `.artifacts/tests/<测试名称>/<运行编号>/`。真机测试核对本次运行编号、应用退出状态和全部场景结果。可以追加 `--junitxml=.artifacts/tests/e2e.xml` 输出 JUnit 报告。设备未连接、模型失败、超时或断言失败都会使测试失败。图案检查覆盖格式、几何与设备确认，人眼辨识效果需要人工查看。
+目前没有自动化测试。`uv run watcherobot app run scripts/eye_preview` 可以在真机上逐个预览眼型，不调用模型。
 
 ## 实现
 
@@ -206,7 +181,6 @@ flowchart TD
 | `observability/server.py` | 本机 HTTP 服务与 SSE 事件流，支持按事件 ID 续传 |
 | `observability/web/index.html` | 轨迹页面：按轮次分组的记录表与检查器 |
 | `scripts/` | 眼型预览工具 |
-| `tests/` | 单元测试、真实服务和真机 E2E |
 
 ## 添加游戏
 
