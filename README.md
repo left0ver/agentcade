@@ -112,7 +112,15 @@ uv run ruff check app.py robot_agents games observability scripts
 uv run watcherobot app check .
 ```
 
-目前没有自动化测试。`uv run watcherobot app run scripts/eye_preview` 可以在真机上逐个预览眼型，不调用模型。
+真机端到端测试：
+
+```bash
+uv run python scripts/e2e_robot.py
+```
+
+脚本启动应用，用电脑扬声器替用户说话，机器人收音并回应，再根据可观测性事件核对每一步：查询游戏、猜数字的开局、猜数、提示和结束、游戏中的闲聊，以及你画我猜的开局（先回复稍等、显示进度、画出题目）、提示、作答和结束。运行前连接机器人并放在电脑扬声器附近，保持环境安静；全程大约五分钟，会调用真实的语音和模型服务。合成的用户语音、应用日志、轨迹和报告保存在 `.artifacts/e2e/<时间>/`。
+
+除此之外没有其他自动化测试。`uv run watcherobot app run scripts/eye_preview` 可以在真机上逐个预览眼型，不调用模型。
 
 ## 实现
 
@@ -203,7 +211,7 @@ flowchart TD
 | `observability/events.py` | 事件总线、轮次与上下级关联、工具调用和 A2A 通信的记录入口 |
 | `observability/server.py` | 本机 HTTP 服务与 SSE 事件流，支持按事件 ID 续传 |
 | `observability/web/index.html` | 轨迹页面：按轮次分组的记录表与检查器 |
-| `scripts/` | 眼型预览工具 |
+| `scripts/` | 真机端到端测试和眼型预览工具 |
 
 ## 添加游戏
 
