@@ -118,7 +118,17 @@ class GameAgent(SkillAgent):
             if self.game.index + 1 == self.game.rounds:
                 self.game.advance()
                 turn.end_session()
-            return self.facts(reply)
+                return self.facts(reply)
+            # 跳过后直接出下一题，用户不用再说一次：先显示进度、公布答案，再生成。
+            try:
+                await show_progress()
+            except Exception:
+                # 进度画面只是提示，显示失败不影响出题。
+                logger.warning("显示进度失败", exc_info=True)
+            said = f"这题的答案是{reply.answer}。我来画下一题，稍等一下。"
+            await turn.say(said)
+            self.game.advance()
+            return {**await generate_question(), "skipped_answer": reply.answer, "said": said}
 
         async def next_question():
             # 上一次没有生成成功时，题目仍然待出，直接重新生成。
@@ -155,8 +165,8 @@ class GameAgent(SkillAgent):
             Tool("get_hint", "取得当前题目的下一条提示。", NoInput, get_hint),
             Tool("submit_answer", "判定用户的动物答案并更新得分和机会；每条用户输入只能提交一次。",
                  original_text_input(turn.text), submit_answer),
-            Tool("skip_question", "公布当前题目的答案并结束这一题，最后一题则结束整局。",
-                 NoInput, skip_question),
+            Tool("skip_question", "跳过当前题目：把答案告诉用户，然后直接生成下一题，需要等待一段时间；"
+                 "跳过最后一题则结束整局。", NoInput, skip_question),
             Tool("next_question", "当前题目结束后生成下一题，需要等待一段时间。",
                  NoInput, next_question),
             Tool("end_game", "结束游戏，返回得分和没猜完那一题的答案。", NoInput, end_game),

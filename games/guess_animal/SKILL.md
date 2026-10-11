@@ -14,7 +14,7 @@ required_capabilities: [expression.vector_accessory.v1, motion]
 
 - 一局五题，每题两次回答机会，答对得一分。
 - 每题有三条提示，要提示不占回答机会。
-- 可以跳过当前题目，跳过时公布答案。
+- 可以跳过当前题目，跳过时公布答案并直接进入下一题；跳过最后一题时整局结束。
 - 画一题需要等一会儿，画图前要先告诉用户。
 
 ## 流程
@@ -40,12 +40,11 @@ required_capabilities: [expression.vector_accessory.v1, motion]
 
 - 用户要提示：调用 get_hint，把提示告诉用户；outcome 为 hints_exhausted 时说明提示已经用完。
 - 用户表示不知道或犹豫时，先鼓励或者给提示，不擅自跳题。
-- 题目还没结束，用户明确要求跳过、下一题或公布答案：调用 skip_question，然后出下一题。
-- 题目已经结束，用户要求下一题：出下一题。
-- 出下一题：先用 say 请用户稍等，跳过时一并公布上一题的答案；再调用 show_progress 和 next_question，然后调用 show_drawing 展示图案，请用户猜。
-- start_game 或 next_question 的 outcome 为 generation_failed：这题没有画出来，向用户道歉，请他说“下一题”再试一次；这时不要调用 show_drawing。
+- 题目还没结束，用户明确要求跳过、下一题或公布答案：调用 skip_question。它会自己把答案告诉用户、显示进度并画好下一题，结果里的 said 是已经说过的话，不要重复；outcome 为 question_ready 时调用 show_drawing 展示新题，请用户猜。跳过的是最后一题时整局结束，按“结束”处理。
+- 题目已经结束，用户要求下一题：先用 say 请用户稍等，再调用 show_progress 和 next_question，然后调用 show_drawing 展示图案，请用户猜。
+- start_game、next_question 或 skip_question 的 outcome 为 generation_failed：这题没有画出来，向用户道歉，请他说“下一题”再试一次；这时不要调用 show_drawing。
 
 ### 结束
 
-- 第五题结束后整局自动结束，这时工具结果的 phase 为“已结束”：告诉用户得分并告别，调用 clear_display。
+- 第五题结束后整局自动结束，这时工具结果的 phase 为“已结束”：结果带有 answer 时先公布这一题的答案，再告诉用户得分并告别，调用 clear_display。
 - event 为 end：调用 end_game，告诉用户得分并告别，调用 clear_display。结果带有 answer 时顺便公布这一题的答案，没有就不提答案。
