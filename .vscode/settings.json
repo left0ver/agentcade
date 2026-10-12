@@ -1,0 +1,6 @@
+{
+  // games/ 下的 SKILL.md 是本项目自己的游戏说明格式，不是 VS Code 的 Agent Skill，按普通 Markdown 处理。
+  "files.associations": {
+    "**/games/*/SKILL.md": "markdown"
+  }
+}
