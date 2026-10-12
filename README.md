@@ -1,6 +1,6 @@
 # 桌面机器人 Agent
 
-主 Agent 负责语音聊天和游戏选择，通过 A2A 与独立游戏 Agent 通信。目前提供“你画我猜”和“猜数字”，游戏目录由 `games.json` 配置。
+主 Agent 负责语音聊天和游戏选择，通过 A2A 与独立游戏 Agent 通信。目前提供“你画我猜”和“猜数字”。`games/` 下的每个游戏目录启动时自动接入，新增游戏只需要新增一个目录。
 
 说“有哪些游戏”查看目录，说“开始猜数字”或“玩第二个”选择游戏。游戏期间可以聊天，也可以直接继续回答；说“继续游戏”查询当前进度。等待用户输入期间保持游戏状态。
 
@@ -61,7 +61,7 @@ uv run watcherobot app run .
 | `TYPESAFE_API_KEY` | 你画我猜的 JEV 答案判定凭据 |
 | `JEV_MODEL` / `JEV_CONFIDENCE_THRESHOLD` | 你画我猜的 JEV 模型与判定置信度，默认 `jev-latest` / `0.65` |
 | `LLM_API_KEY` | 当前配置文件所属 Agent 的 OpenAI 兼容接口凭据 |
-| `GAME_CATALOG` | 主程序的游戏目录路径，默认项目中的 `games.json`；相对路径以主程序 `.env` 所在目录为基准 |
+| `GAME_CATALOG` | 远程游戏的注册文件路径，默认项目中的 `games.json`；相对路径以主程序 `.env` 所在目录为基准 |
 | `OBSERVABILITY_PORT` | 可观测性页面的本机端口，默认 8790；不能使用 SDK 守护进程占用的 8765 和 8767 |
 
 `DASHSCOPE_BASE_URL` 是百炼业务空间的地址，换 key 时记得一起改。
@@ -128,7 +128,7 @@ uv run python scripts/e2e_robot.py
 flowchart TD
     Mic[机器人麦克风 16 kHz PCM] --> ASR[Qwen ASR\n服务端判断说话结束]
     ASR -->|用户原话| Main[主 Agent：聊天与工具调用\n内部包含 A2A Client]
-    Catalog[games.json 和 Agent Card] --> Main
+    Catalog[games/ 下的游戏目录和 Agent Card] --> Main
     Main -->|A2A JSON-RPC| Animal[你画我猜 Agent]
     Main -->|A2A JSON-RPC| Number[猜数字 Agent]
     Main -->|A2A JSON-RPC| Extension[新增游戏 Agent]
@@ -147,7 +147,7 @@ flowchart TD
     Output --> Device[屏幕、表情、头部动作]
 ```
 
-主 Agent 使用持续的 ASR WebSocket 会话识别麦克风语音，由 ASR 服务判定说话结束。主 Agent 根据原话、历史和当前游戏，直接回答，或者调用 `list_games`、`start_game`、`end_game`、`send_message`。每轮模型调用都会将当前已注册游戏的名称、ID、别名和介绍按目录顺序写入系统提示词，新增游戏通过注册即可使用。普通聊天由主 Agent 直接回复，游戏介绍和播报使用简短的日常口语。
+主 Agent 使用持续的 ASR WebSocket 会话识别麦克风语音，由 ASR 服务判定说话结束。主 Agent 根据原话、历史和当前游戏，直接回答，或者调用 `list_games`、`start_game`、`end_game`、`send_message`。每轮模型调用都会将当前已注册游戏的名称、ID、别名和介绍按目录顺序写入系统提示词，新增游戏目录后自动使用。普通聊天由主 Agent 直接回复，游戏介绍和播报使用简短的日常口语。
 
 主 Agent 通过 A2A 给游戏 Agent 发一条消息，游戏 Agent 把它当作用户输入，回复一条或多条要播报的话，主 Agent 原样交给 TTS。第一条回复播完后恢复收音，其余回复到达时继续播报。游戏还在处理上一条输入时，新的游戏输入不会转发，主 Agent 会请用户稍等。消息格式见 [通信设计](docs/main-agent-game-a2a-design.md)。
 
@@ -186,7 +186,7 @@ flowchart TD
 | `robot_agents/tools.py` | 工具注册、JSON Schema、参数校验和执行记录 |
 | `robot_agents/protocol.py` | 主 Agent 与游戏 Agent 的统一通信格式、游戏声明和设备输出 schema |
 | `robot_agents/main_agent.py` | 主 Agent 决策、聊天历史、单游戏限制和游戏回复的播报 |
-| `robot_agents/game_client.py` | 主 Agent 一侧：游戏注册、Agent Card 校验和 A2A 回复流 |
+| `robot_agents/game_client.py` | 主 Agent 一侧：发现游戏目录、Agent Card 校验和 A2A 回复流 |
 | `robot_agents/game_server.py` | 游戏一侧：本地 A2A 服务、会话与请求的顺序和取消 |
 | `robot_agents/task_store.py` | 已完成 A2A Task 的保留数量 |
 | `robot_agents/skill.py` | `SKILL.md` 的读取与校验 |
@@ -195,7 +195,7 @@ flowchart TD
 | `games/<game_id>/SKILL.md` | 游戏声明、规则和流程 |
 | `games/<game_id>/agent.py` | 游戏入口 `GameAgent`：状态和工具 |
 | `games/<game_id>/config.py` | 游戏独立配置读取与检查 |
-| `games.json` | 游戏目录 |
+| `games.json` | 远程游戏的注册文件，本地游戏不需要登记 |
 | `games/guess_animal/game.py` | 出题、计分、提示 |
 | `games/guess_animal/generator.py` | 提示词、输出校验、去重历史 |
 | `games/guess_animal/animals.py` | 动物数据结构 |
@@ -251,19 +251,11 @@ required_capabilities: [motion]
 
 工具返回可以转成 JSON 的事实，例如判定结果、提示和剩余次数，由模型组织成回复。无法执行的操作返回带 `outcome` 的结果，模型据此向用户说明。
 
-把模块加入 `games.json`，重新启动应用：
+目录放好后重新启动应用就会接入，不需要登记，也不需要改主 Agent。启动时 `games/` 下每个同时带有 `SKILL.md` 和 `agent.py` 的子目录都会被当作一个游戏，目录名要和 `SKILL.md` 里的 `id` 一致，游戏按目录名排序。
 
-```json
-{
-  "kind": "local",
-  "id": "guess_number",
-  "factory": "games.guess_number.agent:GameAgent"
-}
-```
+`games/guess_number/` 是完整示例。增加使用现有语音、屏幕和动作能力的游戏，只需要新增游戏目录，主 Agent 的提示词、选择逻辑、开场白和输出处理自动使用游戏声明。游戏用到新的 Python 依赖时，还要加进 `pyproject.toml` 和 `app.json`。
 
-`games/guess_number/` 是完整示例。增加使用现有语音、屏幕和动作能力的游戏，只需要新增游戏目录和注册配置，主 Agent 的提示词、选择逻辑和输出处理自动使用游戏声明。
-
-独立部署的游戏可以配置 `{"kind":"remote","id":"my_game","url":"https://example.com"}`。服务提供 A2A Agent Card、流式 JSON-RPC 接口，以及标记 `desktop-game/5` 的 skill，并按 [通信设计](docs/main-agent-game-a2a-design.md) 收发消息。部署方通过 `serve_game(factory, settings, device)` 注入真实设备执行函数。设备能力通过 `capability:motion` 等 tag 声明，认证由部署环境提供。
+独立部署的游戏在 `games.json` 里登记，例如 `[{"kind":"remote","id":"my_game","url":"https://example.com"}]`。服务提供 A2A Agent Card、流式 JSON-RPC 接口，以及标记 `desktop-game/5` 的 skill，并按 [通信设计](docs/main-agent-game-a2a-design.md) 收发消息。部署方通过 `serve_game(factory, settings, device)` 注入真实设备执行函数。设备能力通过 `capability:motion` 等 tag 声明，认证由部署环境提供。
 
 ## License
 

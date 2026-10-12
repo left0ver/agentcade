@@ -11,6 +11,7 @@ from a2a.types import Message, Role, SendMessageRequest, TaskState
 from pydantic import Field, TypeAdapter
 
 import observability
+from robot_agents.config import ROOT
 from robot_agents.game_server import serve_game
 from robot_agents.protocol import (
     PROTOCOL_VERSION,
@@ -87,11 +88,23 @@ class GameConnection:
         return final
 
 
+def discover(directory: Path) -> list[LocalGame]:
+    """游戏目录下每个带 SKILL.md 和 agent.py 的子目录是一个本地游戏，按目录名排序。"""
+    return [
+        LocalGame(id=child.name, factory=f"{directory.name}.{child.name}.agent:GameAgent")
+        for child in sorted(directory.iterdir())
+        if (child / "SKILL.md").is_file() and (child / "agent.py").is_file()
+    ]
+
+
 @asynccontextmanager
-async def connect_games(path: Path, device):
-    entries = Catalog.validate_json(path.read_text(encoding="utf-8"))
+async def connect_games(path: Path, device, directory: Path = ROOT / "games"):
+    # 本地游戏放进游戏目录就会被发现；注册文件只用来接入远程游戏或目录以外的游戏。
+    entries = discover(directory)
+    if path.is_file():
+        entries += Catalog.validate_json(path.read_text(encoding="utf-8"))
     if len({item.id for item in entries}) != len(entries):
-        raise ValueError("游戏注册 ID 不能重复")
+        raise ValueError("游戏 ID 不能重复")
     async with AsyncExitStack() as resources:
         games = {}
         for entry in entries:
@@ -101,7 +114,7 @@ async def connect_games(path: Path, device):
                 factory = getattr(importlib.import_module(module), name)
                 descriptor = factory.skill.descriptor
                 if descriptor.id != entry.id:
-                    raise ValueError("注册 ID 与游戏声明不一致")
+                    raise ValueError(f"游戏目录名或注册 ID 与 SKILL.md 声明的 ID 不一致：{entry.id}")
                 settings = factory.load_settings()
                 timeout = settings.llm.timeout_seconds * 3 + 30
                 url = await resources.enter_async_context(serve_game(factory, settings, device))

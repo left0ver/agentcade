@@ -1,12 +1,1 @@
-[
-  {
-    "kind": "local",
-    "id": "guess_animal",
-    "factory": "games.guess_animal.agent:GameAgent"
-  },
-  {
-    "kind": "local",
-    "id": "guess_number",
-    "factory": "games.guess_number.agent:GameAgent"
-  }
-]
+[]
