@@ -76,9 +76,10 @@ sequenceDiagram
 | --- | --- |
 | 你画我猜 | `start_game`、`get_hint`、`submit_answer(text)`、`skip_question`、`next_question`、`end_game`、`show_drawing`、`show_progress` |
 | 猜数字 | `start_game`、`get_hint`、`submit_guess(number)`、`end_game` |
-| 公共设备工具 | `show_expression(expression)`、`move_head(gesture)`、`clear_display` |
 
-动物答案由 JEV 判定，`submit_answer` 只接受用户完整原文，每条输入只判一次。设备工具通过构造时注入的设备执行函数直接操作机器人，执行完成后返回 `device_completed=true`。
+动物答案由 JEV 判定，`submit_answer` 只接受用户完整原文，每条输入只判一次。展示画面的工具通过构造时注入的设备执行函数直接操作机器人，执行完成后返回 `device_completed=true`。
+
+答对答错时的表情和动作不是模型的工具。规则工具判定出结果后调用 `self.react(expression, gesture)`：答对点头并显示开心，答错摇头并显示抱歉。输出模块立刻显示表情、开始动作，不等动作做完；表情留到接下来这句话说完，再把屏幕恢复成游戏当前的图案或待机画面。本局结束时运行时请求回到待机画面，同样等最后一句话说完再换。这些都在进程内直接执行，A2A 消息里仍然只有文字。
 
 游戏服务按到达顺序逐条处理同一局的请求。`end` 到达时取消正在处理的那一轮，再执行结束流程。
 

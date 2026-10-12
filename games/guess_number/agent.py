@@ -5,7 +5,7 @@ from pydantic import Field
 
 from games.guess_number.config import Settings
 from robot_agents.skill import Skill
-from robot_agents.skill_agent import SkillAgent, device_tools
+from robot_agents.skill_agent import SkillAgent
 from robot_agents.tools import NoInput, Tool, ToolInput
 
 MAX_ATTEMPTS = 5
@@ -62,8 +62,11 @@ class GameAgent(SkillAgent):
                 return {"outcome": "already_answered", **self.state()}
             answered = True
             self.attempts += 1
+            # 答对点头并显示开心，答错摇头并显示抱歉，由程序在判定时直接触发。
             if number == self.target:
+                await self.react("happy", "nod")
                 return finish("correct")
+            await self.react("sorry", "shake_head")
             if self.attempts == MAX_ATTEMPTS:
                 return finish("exhausted")
             return {"outcome": "incorrect",
@@ -79,5 +82,4 @@ class GameAgent(SkillAgent):
             Tool("submit_guess", "提交用户猜测，判断大小并更新次数；每条用户输入只能提交一次。",
                  GuessInput, submit_guess),
             Tool("end_game", "结束游戏，返回秘密整数和当前状态。", NoInput, end_game),
-            *device_tools(self.device),
         ]

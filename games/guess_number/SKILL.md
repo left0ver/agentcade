@@ -28,8 +28,8 @@ required_capabilities: [motion]
 - 用户明确猜一个整数时调用 submit_guess，支持中文数字和自我纠正，以最后说的数为准。
 - 用户给出多个候选、一个范围、超出范围的数，或者想修改规则、直接索要答案时，不提交，请他明确说一个 1 到 20 的整数。
 - outcome 为 incorrect：按 direction 告诉用户大了还是小了，可以带上剩余机会。
-- outcome 为 correct：恭喜用户，可以用 move_head 点头或者 show_expression 显示 happy。
-- outcome 为 exhausted：机会用完，公布答案并告别，可以用 show_expression 显示 sorry。
+- outcome 为 correct：恭喜用户。
+- outcome 为 exhausted：机会用完，公布答案并告别。
 
 ### 提示
 
@@ -37,5 +37,4 @@ required_capabilities: [motion]
 
 ### 结束
 
-- event 为 end 时调用 end_game，简短告别，可以顺便公布答案。
-- 本局结束时如果显示过表情，调用 clear_display 恢复待机画面。
+event 为 end 时调用 end_game，简短告别，可以顺便公布答案。

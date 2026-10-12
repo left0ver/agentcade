@@ -23,7 +23,7 @@ class GameDescriptor(Model):
 class Presentation(Model):
     text: str = Field(default="", max_length=500)
     paths: list[str] = Field(default_factory=list)
-    expression: Literal["happy", "sorry", "thinking"] | None = None
+    expression: Literal["happy", "sorry"] | None = None
     gesture: Literal["nod", "shake_head"] | None = None
     clear: bool = False
     progress_seconds: int | None = Field(default=None, gt=0)

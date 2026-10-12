@@ -8,7 +8,7 @@ from pydantic import Field
 from robot_agents.protocol import GameInput, GameReply, Presentation
 from robot_agents.providers import OpenAIProvider
 from robot_agents.skill import Skill
-from robot_agents.tools import NoInput, Tool, ToolInput, ToolRegistry
+from robot_agents.tools import Tool, ToolInput, ToolRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +23,8 @@ AGENT_PROMPT = """你是桌面机器人上的游戏 Agent，按照“游戏说�
 可以连续调用多个工具，观察结果后继续判断；解释、鼓励、回应情绪和请求澄清可以直接回复。
 需要在处理中途先说一句话时调用 say，例如耗时操作之前请用户稍等；最终文本不要重复 say 说过的内容。
 游戏状态、次数和得分以工具结果和“当前状态”为准，不要自行猜测或重复计分。
-设备工具直接执行绘图、表情和动作，device_completed=true 表示执行完成。
+展示画面的工具直接操作屏幕，device_completed=true 表示执行完成。
+答对答错时的表情和动作、整局结束后恢复画面都由系统自动完成，你只负责说话，不要在回复里描述动作。
 工具结果带有 error 表示这次操作没有成功：可以重试一次，仍然失败就向用户简单说明，不要当作已经完成。
 答案和提示只能来自工具结果；工具没有给出答案时，不要说出、暗示或猜测答案。
 你只负责这一局游戏，不了解机器人的其他游戏和功能。用户提到别的游戏或这局以外的事时，不评价有没有、能不能，只做完这一局该做的事；例如结束时用户说接下来想玩别的，正常告别就行。
@@ -40,35 +41,6 @@ FALLBACK_REPLIES = {
 
 class SayInput(ToolInput):
     text: str = Field(min_length=1, max_length=120, description="立刻对用户说的一句话")
-
-
-class ExpressionInput(ToolInput):
-    expression: Literal["happy", "sorry", "thinking"]
-
-
-class GestureInput(ToolInput):
-    gesture: Literal["nod", "shake_head"]
-
-
-def device_tools(device: Device) -> list[Tool]:
-    async def present(output):
-        await device(output)
-        return {"device_completed": True}
-
-    async def show_expression(expression):
-        return await present(Presentation(expression=expression))
-
-    async def move_head(gesture):
-        return await present(Presentation(gesture=gesture))
-
-    async def clear_display():
-        return await present(Presentation(clear=True))
-
-    return [
-        Tool("show_expression", "在机器人屏幕上显示表情。", ExpressionInput, show_expression),
-        Tool("move_head", "执行点头或摇头，等待动作完成。", GestureInput, move_head),
-        Tool("clear_display", "清除当前图案并恢复待机画面。", NoInput, clear_display),
-    ]
 
 
 class Turn:
@@ -105,6 +77,24 @@ class SkillAgent:
     def state(self) -> dict:
         return {}
 
+    async def react(self, expression: Literal["happy", "sorry"],
+                    gesture: Literal["nod", "shake_head"]) -> None:
+        """对用户刚才的回答做出表情和动作。立刻开始，不等动作做完；表情留到接下来这句话说完。"""
+        try:
+            await self.device(Presentation(expression=expression, gesture=gesture))
+        except Exception:
+            # 反应只是点缀，设备出错不影响判定结果和回复。
+            logger.warning("表情和动作没有执行", exc_info=True)
+
+    async def conclude(self, turn: Turn, text: str) -> GameReply:
+        if turn.ended:
+            try:
+                # 本局结束后屏幕回到待机画面，由输出模块等这句话说完再换。
+                await self.device(Presentation(clear=True))
+            except Exception:
+                logger.warning("结束时没有恢复待机画面", exc_info=True)
+        return GameReply(text=text, session="ended" if turn.ended else "active")
+
     def system_prompt(self) -> str:
         return (
             AGENT_PROMPT + "\n# 游戏说明\n\n" + self.skill.instructions
@@ -139,8 +129,7 @@ class SkillAgent:
             logger.exception("游戏 Agent 处理 %s 请求失败", request.kind)
             if request.kind != "message":
                 turn.end_session()
-            return GameReply(text=FALLBACK_REPLIES[request.kind],
-                             session="ended" if turn.ended else "active")
+            return await self.conclude(turn, FALLBACK_REPLIES[request.kind])
         if request.kind == "end":
             turn.end_session()
         # 本轮完成后才写入记忆，被取消的轮次不会留下没有结果的工具调用；思考内容只在当轮有效。
@@ -149,7 +138,7 @@ class SkillAgent:
             for message in messages[current:]
         ])
         del self.memory[:-self.memory_turns]
-        return GameReply(text=text, session="ended" if turn.ended else "active")
+        return await self.conclude(turn, text)
 
     async def close(self) -> None:
         await self.provider.close()

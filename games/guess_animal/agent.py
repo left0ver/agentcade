@@ -7,7 +7,7 @@ from games.guess_animal.generator import AnimalGenerator
 from games.guess_animal.judge import JevJudge
 from robot_agents.protocol import Presentation
 from robot_agents.skill import Skill
-from robot_agents.skill_agent import SkillAgent, device_tools
+from robot_agents.skill_agent import SkillAgent
 from robot_agents.tools import NoInput, Tool, original_text_input
 
 logger = logging.getLogger(__name__)
@@ -105,6 +105,11 @@ class GameAgent(SkillAgent):
             if decision not in {Decision.CORRECT, Decision.INCORRECT}:
                 return {"outcome": "unclear", **self.state()}
             reply = self.game.handle(decision, self.game.revision)
+            # 答对点头并显示开心，答错摇头并显示抱歉，由程序在判定时直接触发。
+            if decision is Decision.CORRECT:
+                await self.react("happy", "nod")
+            else:
+                await self.react("sorry", "shake_head")
             if self.game.resolved and self.game.index + 1 == self.game.rounds:
                 self.game.advance()
                 turn.end_session()
@@ -170,11 +175,10 @@ class GameAgent(SkillAgent):
             Tool("next_question", "当前题目结束后生成下一题，需要等待一段时间。",
                  NoInput, next_question),
             Tool("end_game", "结束游戏，返回得分和没猜完那一题的答案。", NoInput, end_game),
-            Tool("show_drawing", "展示或恢复当前题目的图案。生成题目后必须展示，之后再邀请用户作答。",
+            Tool("show_drawing", "展示当前题目的图案。生成题目后必须展示，之后再邀请用户作答。",
                  NoInput, show_drawing),
             Tool("show_progress", "在开始生成题目之前显示预计进度，展示题目或清屏时结束。",
                  NoInput, show_progress),
-            *device_tools(self.device),
         ]
 
     async def close(self):

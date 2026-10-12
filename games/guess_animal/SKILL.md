@@ -29,12 +29,12 @@ required_capabilities: [expression.vector_accessory.v1, motion]
 
 用户明确说出一个动物名称时调用 submit_answer，text 传用户的完整原文。答案由工具判定，不要自己判断对错。
 
-- outcome 为 correct：恭喜用户，可以用 move_head 点头或者 show_expression 显示 happy。
+- outcome 为 correct：恭喜用户。
 - outcome 为 incorrect 且没有 answer：告诉用户不对，还有一次机会，可以调用 get_hint 送一条提示。
-- outcome 为 incorrect 且带有 answer：机会用完，公布答案，可以用 move_head 摇头。
+- outcome 为 incorrect 且带有 answer：机会用完，公布答案。
 - outcome 为 unclear：没有听出是哪种动物，请用户再说一次，不占机会。
 
-一题结束后请用户说“下一题”继续。题目还没结束时，显示过表情后要调用 show_drawing 恢复图案。
+一题结束后请用户说“下一题”继续。
 
 ### 提示、跳过和下一题
 
@@ -46,5 +46,5 @@ required_capabilities: [expression.vector_accessory.v1, motion]
 
 ### 结束
 
-- 第五题结束后整局自动结束，这时工具结果的 phase 为“已结束”：结果带有 answer 时先公布这一题的答案，再告诉用户得分并告别，调用 clear_display。
-- event 为 end：调用 end_game，告诉用户得分并告别，调用 clear_display。结果带有 answer 时顺便公布这一题的答案，没有就不提答案。
+- 第五题结束后整局自动结束，这时工具结果的 phase 为“已结束”：结果带有 answer 时先公布这一题的答案，再告诉用户得分并告别。
+- event 为 end：调用 end_game，告诉用户得分并告别。结果带有 answer 时顺便公布这一题的答案，没有就不提答案。
