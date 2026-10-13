@@ -964,8 +964,9 @@ function reaction(event) {
   const output = event.payload.output;
   const done = event.payload.completed;
   const parts = [
-    { nod: "点了点头", shake_head: "摇了摇头" }[output.gesture],
-    { happy: "很开心", sorry: "有点抱歉" }[output.expression],
+    // 没有对应说法的新动作和新表情直接显示它的名字，页面不用跟着改。
+    { nod: "点了点头", shake_head: "摇了摇头" }[output.gesture] || output.gesture,
+    { happy: "很开心", sorry: "有点抱歉" }[output.expression] || output.expression,
   ].filter(Boolean);
   const node = el("div", "act");
   node.append(el("b", "", "小懒"), el("span", "", parts.join("，") + (done ? "" : "（没有做成）")));
