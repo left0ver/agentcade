@@ -1,7 +1,7 @@
 [project]
-name = "desktop-robot"
+name = "agentcade"
 version = "0.1.0"
-description = "通过语音与桌面机器人玩猜动物游戏"
+description = "与机器人聊天，选择你画我猜或猜数字，通过 A2A 接入更多游戏。"
 readme = "README.md"
 authors = [
     { name = "left0ver", email = "1614674987@qq.com" }
