@@ -6,7 +6,7 @@ from urllib.parse import urlsplit, urlunsplit
 from dotenv import dotenv_values
 
 ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_BASE_URL = "https://llm-2lb3ys6gg99neqej.cn-beijing.maas.aliyuncs.com/compatible-mode/v1"
+DEFAULT_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 
 
 def read_environment(path: Path) -> dict[str, str]:
