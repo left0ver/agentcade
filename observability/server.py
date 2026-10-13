@@ -29,8 +29,12 @@ async def serve(port, events=bus):
 
     async def stream(seq):
         yield f"retry: 2000\nevent: run\ndata: {json.dumps({'run_id': events.run_id})}\n\n"
+        live = None
         while True:
             changed = events.changed
+            if live != events.live_version:
+                live = events.live_version
+                yield f"event: live\ndata: {json.dumps(events.live, ensure_ascii=False)}\n\n"
             for event in events.after(seq):
                 seq = event.seq
                 yield f"id: {events.run_id}:{seq}\ndata: {event.data}\n\n"

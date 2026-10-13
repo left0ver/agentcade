@@ -49,7 +49,11 @@ class OutputCoordinator:
             else:
                 # 留到下一句话说完才换的画面，到真正恢复的时候再记录。
                 if performed is not False:
-                    bus.emit("device.output", {"output": output, "completed": True})
+                    record = {"output": output, "completed": True}
+                    if output.expression and not output.text:
+                        # 带上屏幕实际显示的表情图案，页面用它画出机器人当时的样子。
+                        record["face"] = expression_vector(EXPRESSIONS[output.expression])
+                    bus.emit("device.output", record)
 
     async def show_vector(self, path):
         async with self.display_lock:
@@ -147,7 +151,7 @@ class OutputCoordinator:
                 await self.settle()
                 self.last_text = output.text
                 self.app.logger.info("机器人：%s", output.text)
-                metrics = await self.audio.play(audio)
+                metrics = await self.audio.play(audio, on_start=lambda seconds: self.started(output, seconds))
                 self.app.logger.info(
                     "语音播放：任务 %s，启动 %.2f 秒，完成 %.2f 秒，PCM %s 字节",
                     metrics.playback_id, metrics.started_seconds, metrics.completed_seconds,
@@ -160,6 +164,10 @@ class OutputCoordinator:
             self.input.resume(owner=self)
         if output.text:
             await self.restore()
+
+    async def started(self, output, seconds):
+        # 对话页面按这段语音的时长把文字逐步显示出来，和机器人说话的进度一致。
+        bus.emit("speech.start", {"text": output.text, "duration_ms": round(seconds * 1000)})
 
     async def react(self, output):
         """对用户回答的即时反应：立刻显示表情、开始动作，不等动作做完；表情留到接下来这句话说完。"""

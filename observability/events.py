@@ -45,6 +45,9 @@ class EventBus:
         self.seq = 0
         self.changed = asyncio.Event()
         self.turns: OrderedDict[str, str | None] = OrderedDict()
+        # 只反映当前情况的状态（例如正在听到的话），不进入事件记录，页面连接时拿到最新值。
+        self.live: dict = {}
+        self.live_version = 0
 
     def emit(self, kind, payload):
         self.seq += 1
@@ -63,6 +66,11 @@ class EventBus:
             }
             data = json.dumps(record, ensure_ascii=False)
         self.events.append(Event(self.seq, data))
+        self.wake()
+
+    def publish(self, **values):
+        self.live.update(values)
+        self.live_version += 1
         self.wake()
 
     def wake(self):
@@ -112,9 +120,14 @@ def turn(identifier):
     return scope(turn_id=identifier)
 
 
-def reply(text):
-    """记录主 Agent 将要播报的聊天或游戏回复。"""
-    bus.emit("agent.reply", {"text": text})
+def reply(text, role="assistant"):
+    """记录主 Agent 将要播报的聊天或游戏回复，role 区分是它自己说的还是游戏说的。"""
+    bus.emit("agent.reply", {"text": text, "role": role})
+
+
+def user_speaking(text):
+    """更新正在听到的话，没有人说话时为空。对话页面用它显示正在听。"""
+    bus.publish(hearing=text)
 
 
 @contextmanager

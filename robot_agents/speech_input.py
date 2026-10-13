@@ -17,11 +17,17 @@ class SpeechInput:
         self.agent, self.microphone, self.logger = agent, microphone, logger
         self.busy = False
         self.input_speaking = False
+        self.heard = ""
         self.input_gain = PcmInputGain(settings.input_gain)
         self.events = deque(maxlen=512)
 
-    def activity(self, speaking):
+    def activity(self, speaking, text=""):
         self.input_speaking = speaking and not self.busy
+        # 页面只在识别出文字时显示正在听，环境声音产生的空结果不算。
+        heard = text.strip() if self.input_speaking else ""
+        if heard != self.heard:
+            self.heard = heard
+            observability.user_speaking(heard)
 
     async def run(self, ready):
         messages = asyncio.Queue(32)
@@ -30,7 +36,7 @@ class SpeechInput:
             if self.busy:
                 return
             self.busy = True
-            self.input_speaking = False
+            self.activity(False)
             self.events.append({
                 "type": "recognized", "time": time.monotonic(),
                 "started_at": message.started_at, "text": message.text,
@@ -82,7 +88,7 @@ class SpeechInput:
                     stable = time.monotonic() - started >= STABLE_SESSION_SECONDS
                     failures = 1 if stable else failures + 1
                     delay = min(2 ** (failures - 1), MAX_RECONNECT_DELAY_SECONDS)
-                    self.input_speaking = False
+                    self.activity(False)
                     self.logger.warning("语音识别中断，%s 秒后重新连接（连续第 %s 次）：%s",
                                         delay, failures, observability.describe(error))
                     await asyncio.sleep(delay)

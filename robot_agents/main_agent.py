@@ -107,7 +107,7 @@ class MainAgent:
         return completion
 
     async def reply(self, text, *, role="assistant"):
-        observability.reply(text)
+        observability.reply(text, role)
         return await self.emit([Presentation(text=text)], role=role)
 
     async def receive(self, text):
@@ -153,7 +153,7 @@ class MainAgent:
             operated = True
 
         async def notice(message):
-            completions.append(await self.emit([Presentation(text=message)]))
+            completions.append(await self.reply(message))
             return {"message": message}
 
         async def list_games():

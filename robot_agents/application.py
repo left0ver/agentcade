@@ -6,7 +6,6 @@ from robot_agents.game_client import connect_games
 from robot_agents.main_agent import MainAgent
 from robot_agents.microphone import MicrophoneInput
 from robot_agents.output import OutputCoordinator
-from robot_agents.protocol import Presentation
 from robot_agents.speech_input import SpeechInput
 
 
@@ -44,9 +43,7 @@ class RobotApplication:
                     f"你好呀，我是小懒！现在可以玩{game_names}。想玩哪个？也可以和我聊聊天。"
                     if game_names else "你好呀，我是小懒！现在还没有可玩的游戏，我们可以聊聊天。"
                 )
-                await self.agent.emit([Presentation(
-                    text=greeting,
-                )])
+                await self.agent.reply(greeting)
                 while not self.app.shutdown_requested:
                     # 麦克风、识别和播报出错时各自恢复；通道断开后设备指令全部失效，只能退出。
                     if self.app.connection_lost:

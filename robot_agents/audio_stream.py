@@ -9,7 +9,7 @@ from av.filter import Graph
 from watcherobot.audio import PCMAudio
 from watcherobot.robot import AudioDomain
 
-PlaybackCallback = Callable[[], Awaitable[None]]
+PlaybackCallback = Callable[[float], Awaitable[None]]
 
 
 @dataclass(frozen=True)
@@ -91,7 +91,7 @@ class PcmAudioPlayer:
             started = time.monotonic() - epoch
             async with asyncio.timeout(playback.expected_duration_seconds + 15):
                 if on_start is not None:
-                    await on_start()
+                    await on_start(playback.expected_duration_seconds)
                 while not playback.state.terminal:
                     await asyncio.sleep(0.02)
                 playback.wait(0)

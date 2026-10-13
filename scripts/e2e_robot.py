@@ -92,9 +92,6 @@ class Turn:
         if requests - {event["payload"]["request_id"] for event in self.select("a2a.result")}:
             return False
         expected = Counter(event["payload"]["text"] for event in self.select("agent.reply"))
-        # 主 Agent 的固定提示不经过 agent.reply，从工具结果里取得要播报的文字。
-        expected.update(call["result"]["message"] for call in self.tools("main")
-                        if isinstance(call.get("result"), dict) and "message" in call["result"])
         played = Counter(item["output"]["text"] for item in self.outputs
                          if item["output"].get("text"))
         if expected - played or not played:

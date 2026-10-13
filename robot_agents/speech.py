@@ -185,7 +185,7 @@ class QwenSpeech:
 
     async def transcribe(
         self, audio: AsyncIterator[CapturedPcm], on_result: Callable[[RecognizedSpeech], None],
-        *, on_activity: Callable[[bool], None], ready: asyncio.Event, hotwords=(),
+        *, on_activity: Callable[[bool, str], None], ready: asyncio.Event, hotwords=(),
     ) -> None:
         timeline = SpeechTimeline()
         input_finished = False
@@ -221,7 +221,7 @@ class QwenSpeech:
                     sentence = event["payload"]["output"]["sentence"]
                     if sentence.get("heartbeat"):
                         continue
-                    on_activity(not sentence.get("sentence_end", False))
+                    on_activity(not sentence.get("sentence_end", False), sentence.get("text", ""))
                     if not sentence.get("sentence_end") or sentence["sentence_id"] <= last_sentence:
                         continue
                     last_sentence = sentence["sentence_id"]
