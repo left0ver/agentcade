@@ -1,2 +1,5 @@
 .artifacts/
 scripts/
+.claude/
+docs/refactor-plan.md
+懒羊羊tts.wav
