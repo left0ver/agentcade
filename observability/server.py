@@ -9,12 +9,14 @@ import uvicorn
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
-from starlette.responses import FileResponse, StreamingResponse
+from starlette.responses import FileResponse, Response, StreamingResponse
 from starlette.routing import Route
 
 from observability.events import bus
 
 PAGE = Path(__file__).with_name("web") / "index.html"
+# 项目的 logo 和小懒的头像，页面直接用这里的文件。
+ASSETS = Path(__file__).resolve().parent.parent / "assets"
 
 
 class EmbeddedServer(uvicorn.Server):
@@ -23,7 +25,7 @@ class EmbeddedServer(uvicorn.Server):
 
 
 @asynccontextmanager
-async def serve(port, events=bus):
+async def serve(port, events=bus, routes=()):
     listener = socket.socket()
     closing = asyncio.Event()
 
@@ -58,6 +60,12 @@ async def serve(port, events=bus):
     async def page(request):
         return FileResponse(PAGE, headers={"Cache-Control": "no-store"})
 
+    async def asset(request):
+        path = ASSETS / request.path_params["name"]
+        if path.parent != ASSETS or path.suffix != ".svg" or not path.is_file():
+            return Response(status_code=404)
+        return FileResponse(path)
+
     try:
         # Windows 上这个选项允许多个进程绑定同一端口，只在 POSIX 系统上用于重启后立即复用端口。
         if os.name == "posix":
@@ -77,7 +85,7 @@ async def serve(port, events=bus):
         url = f"http://127.0.0.1:{listener.getsockname()[1]}"
         # 事件包含对话内容，只接受以本机地址发起的访问，其他域名解析到本机时拒绝。
         application = Starlette(
-            routes=[Route("/", page), Route("/events", records)],
+            routes=[Route("/", page), Route("/events", records), Route("/assets/{name}", asset), *routes],
             middleware=[Middleware(TrustedHostMiddleware, allowed_hosts=["127.0.0.1", "localhost"])],
         )
         server = EmbeddedServer(uvicorn.Config(

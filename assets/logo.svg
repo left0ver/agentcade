@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#6F86FF"/>
+      <stop offset="1" stop-color="#6A2BE2"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <!-- 轨道 -->
+  <circle cx="256" cy="256" r="176" fill="none" stroke="#FFFFFF" stroke-opacity=".45" stroke-width="7"/>
+  <!-- 你画我猜：铅笔 -->
+  <circle cx="132" cy="140" r="56" fill="#2A1590" opacity=".3"/>
+  <circle cx="132" cy="132" r="56" fill="#FFFFFF"/>
+  <g transform="translate(132 132) rotate(45) scale(1.15)">
+    <path d="M-10 -26a5 5 0 0 1 5-5h10a5 5 0 0 1 5 5v36l-10 20l-10-20z" fill="#FF5A5F"/>
+    <path d="M-10 -15h20" stroke="#FFFFFF" stroke-width="5"/>
+  </g>
+  <!-- 猜数字 -->
+  <circle cx="380" cy="140" r="56" fill="#2A1590" opacity=".3"/>
+  <circle cx="380" cy="132" r="56" fill="#FFFFFF"/>
+  <path d="M360 108H402L376 158" fill="none" stroke="#FF9F1A" stroke-width="13" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- 语音聊天 -->
+  <circle cx="132" cy="388" r="56" fill="#2A1590" opacity=".3"/>
+  <circle cx="132" cy="380" r="56" fill="#FFFFFF"/>
+  <g stroke="#10B39B" stroke-width="11" stroke-linecap="round">
+    <path d="M105 372V388"/>
+    <path d="M123 356V404"/>
+    <path d="M141 365V395"/>
+    <path d="M159 373V387"/>
+  </g>
+  <!-- 更多游戏：空位 -->
+  <circle cx="380" cy="380" r="52" fill="#6A2BE2" stroke="#FFFFFF" stroke-width="8" stroke-dasharray="15 12.2" stroke-linecap="round"/>
+  <path d="M380 358V402M358 380H402" stroke="#FFFFFF" stroke-width="12" stroke-linecap="round"/>
+  <!-- 小懒：和 avatar.svg 是同一个头像 -->
+  <circle cx="256" cy="268" r="80" fill="#2A1590" opacity=".3"/>
+  <g transform="translate(256 257) scale(.86)">
+    <path d="M-102 -4A102 102 0 0 1 102 -4" fill="none" stroke="#FF6456" stroke-width="16" stroke-linecap="round"/>
+    <path d="M-106 30Q-106 96 -46 98" fill="none" stroke="#FF6456" stroke-width="9" stroke-linecap="round"/>
+    <circle cx="0" cy="4" r="92" fill="#D5DAF6"/>
+    <circle cx="0" cy="-2" r="90" fill="#FFFFFF"/>
+    <rect x="-124" y="-36" width="34" height="68" rx="15" fill="#FF6456"/>
+    <rect x="90" y="-36" width="34" height="68" rx="15" fill="#FF6456"/>
+    <circle cx="-40" cy="98" r="13" fill="#FFC531"/>
+    <circle cx="0" cy="-2" r="68" fill="#14141C"/>
+    <rect x="-33" y="-26" width="16" height="28" rx="8" fill="#FFFFFF"/>
+    <rect x="17" y="-26" width="16" height="28" rx="8" fill="#FFFFFF"/>
+    <path d="M-12 18Q0 29 12 18" fill="none" stroke="#FFFFFF" stroke-width="7.5" stroke-linecap="round"/>
+  </g>
+</svg>

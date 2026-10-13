@@ -115,7 +115,7 @@ async def connect_games(path: Path, device, directory: Path = ROOT / "games"):
                 descriptor = factory.skill.descriptor
                 if descriptor.id != entry.id:
                     raise ValueError(f"游戏目录名或注册 ID 与 SKILL.md 声明的 ID 不一致：{entry.id}")
-                settings = factory.load_settings()
+                settings = factory.config.from_environment()
                 timeout = settings.llm.timeout_seconds * 3 + 30
                 url = await resources.enter_async_context(serve_game(factory, settings, device))
                 # 本地请求完成后关闭连接，避免复用正被服务端空闲超时关闭的连接。

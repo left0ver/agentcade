@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>设置 · Agentcade</title>
+<link rel="icon" href="assets/logo.svg">
+<style>
+:root {
+  color-scheme: light dark;
+  --bg: #ffffff; --panel: #f7f7f8; --border: #e4e4e7; --text: #1c1c1f; --muted: #777783;
+  --hover: #f1f1f3; --accent: #2f62e8; --error: #c9302c; --ok: #19874a; --game: #0c8585;
+  --shadow: 0 6px 24px rgb(15 23 42 / .08);
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #141416; --panel: #1a1a1d; --border: #2a2a2f; --text: #e6e6ea; --muted: #8b8b97;
+    --hover: #202024; --accent: #7ea4ff; --error: #ff6f66; --ok: #4dc480; --game: #4fcfcf;
+    --shadow: 0 6px 24px rgb(0 0 0 / .4);
+  }
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; }
+body {
+  background: var(--bg); color: var(--text);
+  font: 14px/22px -apple-system, BlinkMacSystemFont, "PingFang SC", "Segoe UI", sans-serif;
+}
+button, input { font: inherit; color: inherit; }
+.top {
+  position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 16px; height: 52px;
+  padding: 0 18px; border-bottom: 1px solid var(--border); background: var(--bg);
+}
+.brand { display: flex; align-items: center; gap: 9px; font-weight: 650; color: inherit; text-decoration: none; }
+.logo { width: 26px; height: 26px; }
+.crumb { color: var(--muted); }
+.spacer { flex: 1; }
+.button {
+  display: inline-flex; align-items: center; height: 28px; padding: 0 11px; border: 1px solid var(--border);
+  border-radius: 7px; background: var(--bg); color: inherit; font-size: 13px; text-decoration: none; cursor: pointer;
+}
+.button:hover { background: var(--hover); }
+.page { max-width: 720px; margin: 0 auto; padding: 32px 24px 132px; }
+h1 { margin: 0 0 8px; font-size: 22px; line-height: 30px; font-weight: 650; }
+.where { margin: 16px 0 0; font: 12px/18px var(--mono); color: var(--muted); overflow-wrap: anywhere; }
+.banner {
+  margin-top: 20px; padding: 12px 16px; border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border));
+  border-radius: 12px; background: color-mix(in srgb, var(--accent) 7%, transparent);
+}
+.card { margin-top: 20px; border: 1px solid var(--border); border-radius: 14px; overflow: hidden; }
+.card-head {
+  display: flex; align-items: center; gap: 10px; padding: 14px 18px; border-bottom: 1px solid var(--border);
+  background: var(--panel);
+}
+.card-head h2 { margin: 0; font-size: 15px; line-height: 22px; font-weight: 600; }
+.kind {
+  padding: 0 7px; border-radius: 9px; font-size: 11px; line-height: 18px; color: var(--game);
+  background: color-mix(in srgb, var(--game) 13%, transparent);
+}
+.state { margin-left: auto; font-size: 12px; line-height: 18px; color: var(--ok); text-align: right; }
+.state.problem { color: var(--error); }
+.card-body { padding: 6px 18px 16px; }
+.field { display: block; margin-top: 12px; }
+.label { display: flex; align-items: baseline; gap: 10px; }
+.label span { font-weight: 500; }
+.label code { margin-left: auto; font: 11px/18px var(--mono); color: var(--muted); white-space: nowrap; }
+.field input {
+  width: 100%; height: 36px; margin-top: 5px; padding: 0 11px; border: 1px solid var(--border);
+  border-radius: 9px; background: var(--bg); outline: none;
+}
+.field input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent); }
+.field input::placeholder { color: var(--muted); }
+details { margin-top: 16px; }
+summary { color: var(--muted); font-size: 13px; cursor: pointer; }
+.bar {
+  position: fixed; left: 0; right: 0; bottom: 0; display: flex; justify-content: center; padding: 14px 16px 18px;
+  border-top: 1px solid var(--border); background: var(--bg);
+}
+.bar-inner { display: flex; align-items: center; gap: 14px; width: 100%; max-width: 672px; }
+.message { flex: 1; min-width: 0; color: var(--muted); }
+.message.error { color: var(--error); }
+.message.done { color: var(--ok); }
+.message a { color: var(--accent); }
+.save {
+  height: 38px; padding: 0 22px; border: 0; border-radius: 10px; background: var(--accent); color: #fff;
+  font-weight: 600; cursor: pointer;
+}
+.save:disabled { opacity: .55; cursor: default; }
+@media (prefers-color-scheme: dark) { .save { color: #0b1020; } }
+@media (max-width: 640px) { .page { padding: 20px 14px 132px; } .label code { display: none; } }
+</style>
+</head>
+<body>
+<header class="top">
+  <a class="brand" href="./">
+    <img class="logo" src="assets/logo.svg" alt="">
+    <b>Agentcade</b>
+  </a>
+  <span class="crumb">设置</span>
+  <div class="spacer"></div>
+  <a class="button" href="./">返回对话</a>
+</header>
+<div class="page">
+  <h1>服务设置</h1>
+  <div class="banner" id="banner" hidden>填好并保存后，小懒会自动启动，不用重新打开应用。</div>
+  <div id="cards"></div>
+</div>
+<div class="bar">
+  <div class="bar-inner">
+    <div class="message" id="message"></div>
+    <button class="save" id="save" type="button">保存</button>
+  </div>
+</div>
+<script>
+const $ = (id) => document.getElementById(id);
+const forms = new Map();
+let waiting = false;
+
+function el(tag, className, text) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text !== undefined) node.textContent = text;
+  return node;
+}
+
+function fieldNode(field, inputs) {
+  const node = el("label", "field");
+  const label = el("div", "label");
+  label.append(el("span", "", field.label), el("code", "", field.key));
+  const input = el("input");
+  input.type = field.secret ? "password" : "text";
+  input.autocomplete = "off";
+  input.spellcheck = false;
+  input.value = field.value;
+  // 密钥不回显：已经保存过的留空就继续用原来的。
+  input.placeholder = field.secret ? (field.saved ? "已保存，留空则不修改" : "请填写") : "";
+  inputs.set(field.key, input);
+  node.append(label, input);
+  return node;
+}
+
+function render(data) {
+  waiting = data.waiting;
+  $("banner").hidden = !data.waiting;
+  forms.clear();
+  const cards = data.sections.map((section, index) => {
+    const card = el("section", "card");
+    const head = el("div", "card-head");
+    head.append(el("h2", "", section.title));
+    if (index) head.append(el("span", "kind", "游戏"));
+    head.append(el("span", section.problem ? "state problem" : "state", section.problem || "已配置"));
+    const body = el("div", "card-body");
+    card.append(head, body);
+    const inputs = new Map();
+    forms.set(section.id, inputs);
+    const advanced = el("details");
+    advanced.append(el("summary", "", "更多设置"));
+    for (const field of section.fields) (field.advanced ? advanced : body).append(fieldNode(field, inputs));
+    if (advanced.childElementCount > 1) body.append(advanced);
+    body.append(el("p", "where", `保存到：${section.file}`));
+    return card;
+  });
+  $("cards").replaceChildren(...cards);
+}
+
+function say(text, kind) {
+  $("message").className = `message ${kind || ""}`;
+  $("message").textContent = text;
+}
+
+async function load() {
+  const response = await fetch("settings/data", { cache: "no-store" });
+  const data = await response.json();
+  render(data);
+  return data;
+}
+
+async function watch() {
+  // 应用在等配置：保存之后它会自己继续启动，这里等到它启动完再提示。
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    const data = await (await fetch("settings/data", { cache: "no-store" })).json();
+    if (!data.waiting) {
+      $("banner").hidden = true;
+      $("message").className = "message done";
+      $("message").replaceChildren("已保存，小懒已经启动。", Object.assign(el("a", "", "去对话页面"), { href: "./" }));
+      return;
+    }
+  }
+}
+
+$("save").addEventListener("click", async () => {
+  const body = {};
+  for (const [id, inputs] of forms) {
+    body[id] = Object.fromEntries([...inputs].map(([key, input]) => [key, input.value]));
+  }
+  $("save").disabled = true;
+  say("正在保存…");
+  try {
+    const wasWaiting = waiting;
+    const response = await fetch("settings/data", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      say(data.error || "保存失败", "error");
+      return;
+    }
+    render(data);
+    const unfinished = data.sections.filter((section) => section.problem).map((section) => section.title);
+    if (unfinished.length) say(`已保存，但还有没填好的：${unfinished.join("、")}`, "error");
+    else if (wasWaiting) {
+      say("已保存，小懒正在启动…", "done");
+      watch();
+    } else say("已保存，重新启动应用后生效。", "done");
+  } catch {
+    say("没有连上应用，请确认应用还在运行。", "error");
+  } finally {
+    $("save").disabled = false;
+  }
+});
+
+load().catch(() => say("没有连上应用，请确认应用还在运行。", "error"));
+</script>
+</body>
+</html>

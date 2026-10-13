@@ -1,0 +1,63 @@
+# 小懒读取的配置项。设置页面按这份文件生成表单，读取配置时也按它补默认值、检查必填项。
+#   key       环境变量名
+#   label     设置页面上显示的说明
+#   default   默认值，写成带引号的字符串；不写表示必填
+#   secret    true 表示密钥，页面上不回显
+#   advanced  true 表示一般不用改，页面上收在“更多设置”里
+options:
+  - key: DASHSCOPE_API_KEY
+    label: 阿里云百炼（DashScope）的 API Key，用于语音识别和语音合成
+    secret: true
+  - key: LLM_API_KEY
+    label: 大模型的 API Key，用于聊天和选择游戏（OpenAI 兼容接口）
+    secret: true
+  - key: LLM_BASE_URL
+    label: 大模型的接口地址
+    default: "https://api.deepseek.com"
+  - key: LLM_MODEL_NAME
+    label: 大模型的名称
+    default: "deepseek-flash"
+  - key: LLM_TIMEOUT_SECONDS
+    label: 大模型一次请求最长等待的秒数
+    default: "90"
+    advanced: true
+  - key: LLM_EXTRA_BODY_JSON
+    label: 附加到大模型请求里的参数，JSON 格式
+    default: "{}"
+    advanced: true
+  - key: DASHSCOPE_BASE_URL
+    label: 百炼的接口地址，使用专属业务空间时改成对应的地址
+    default: "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    advanced: true
+  - key: QWEN_ASR_MODEL
+    label: 语音识别模型
+    default: "qwen-audio-3.1-asr-flash-streaming"
+    advanced: true
+  - key: QWEN_TTS_MODEL
+    label: 语音合成模型
+    default: "qwen-audio-3.1-tts-flash"
+    advanced: true
+  - key: QWEN_TTS_VOICE
+    label: 语音合成的音色
+    default: "yuxiaoyun_v3.1"
+    advanced: true
+  - key: SPEECH_TIMEOUT_SECONDS
+    label: 一次语音合成最长等待的秒数
+    default: "90"
+    advanced: true
+  - key: ASR_SILENCE_MS
+    label: 停顿多少毫秒算一句话说完，范围 200 到 6000
+    default: "800"
+    advanced: true
+  - key: ASR_INPUT_GAIN
+    label: 麦克风音量放大倍数，范围 1 到 8
+    default: "4"
+    advanced: true
+  - key: OBSERVABILITY_PORT
+    label: 对话页面的本机端口，不能用 8765 和 8767
+    default: "8790"
+    advanced: true
+  - key: GAME_CATALOG
+    label: 远程游戏的注册文件，相对路径以应用目录为基准
+    default: "games.json"
+    advanced: true

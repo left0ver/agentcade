@@ -41,7 +41,66 @@ uv run watcherobot app run .
 
 ## 配置
 
-每个 Agent 从自己目录中的 `.env` 读取配置，对应目录提供 `.env.example`。文件必须存在；读取时不修改进程环境，不读取根目录 `.env`，也不使用同名进程环境变量覆盖。配置值按字面读取，不展开 `${...}`。
+主 Agent 和每个游戏 Agent 各有一份配置，互相不共用：相同的变量名在不同 Agent 里互不影响，运行时也不会读取别的 Agent 的配置。读取时不修改进程环境，不读取根目录 `.env`，也不使用同名进程环境变量覆盖。配置值按字面读取，不展开 `${...}`。
+
+### 配置项的声明
+
+每个 Agent 读取哪些环境变量，写在它自己目录的 `settings.yaml` 里，主 Agent 和游戏 Agent 用同一种格式：
+
+```yaml
+options:
+  - key: TYPESAFE_API_KEY
+    label: Typesafe 的 API Key，用于判断用户答得对不对
+    secret: true
+  - key: JEV_MODEL
+    label: 判题模型
+    default: "jev-latest"
+    advanced: true
+```
+
+| 字段 | 含义 |
+| --- | --- |
+| `key` | 环境变量名，大写字母、数字和下划线 |
+| `label` | 设置页面上这一项显示的说明 |
+| `default` | 默认值，写成带引号的字符串；不写表示必填 |
+| `secret` | `true` 表示密钥，页面上不回显 |
+| `advanced` | `true` 表示一般不用改，页面上收在“更多设置”里 |
+
+这份文件是唯一的来源：设置页面的表单、读取时补默认值和检查必填项都按它来。文件里不能有重名的项和上表以外的字段，写错时应用启动会报错。
+
+代码里只需要一个配置类说明自己在哪个目录、怎样把读到的值转换成配置对象（`robot_agents/config.py` 的 `AgentSettings`）：
+
+```python
+@dataclass(frozen=True)
+class Settings(AgentSettings):
+    DIRECTORY: ClassVar[Path] = Path(__file__).parent
+
+    llm: LLMSettings
+
+    @classmethod
+    def from_values(cls, values: dict[str, str]) -> "Settings":
+        return cls(llm=LLMSettings.from_values(values))
+```
+
+各目录里的 `.env.example` 由 `settings.yaml` 生成，改了之后运行 `uv run python scripts/write_env_examples.py`。
+
+### 配置保存在哪里
+
+配置从两个地方之一读取：
+
+- **本地开发**：Agent 目录里的 `.env`，存在时以它为准。
+- **安装后的应用**：源码目录里没有 `.env`，改为读取用户目录下的配置，由设置页面写入。位置是 `~/Library/Application Support/watcherobot/applications/<应用 ID>/config/`（Windows 为 `%LOCALAPPDATA%\watcherobot\applications\<应用 ID>\config\`），文件名与 Agent 目录对应，例如 `robot_agents.env`、`games/guess_number.env`。这个目录在源码之外，升级和重装应用时不会丢。
+
+### 设置页面
+
+应用运行时打开 `http://127.0.0.1:8790/settings`，或在对话页面右上角点“设置”。配置还没有填好时，应用启动后会自动打开这个页面并等待，保存后自动继续启动，不用重新打开应用。
+
+- 表单按各 Agent 目录里的 `settings.yaml` 生成：主 Agent 一栏，`games/` 下每个游戏一栏，各存各的文件。页面不认识任何具体的配置项，新增游戏声明了自己的配置项就会多出一栏。
+- 每一栏下面写着它实际保存到哪个文件：源码目录里有 `.env` 时就是这个 `.env`，否则是用户目录下对应的文件。
+- 保存时只改动改过的那几项：文件里已有的项原地替换，没有的追加到末尾，值和默认值相同的不写；注释、空行和没有声明的项原样保留。什么都没改就保存，文件一个字节都不变。
+- 密钥不回显，留空保存表示沿用已经保存的那一个。新建的配置文件只允许当前用户读写，已有的文件保持原来的权限。
+- 应用已经在运行时，保存的内容要重新启动应用才生效。
+- 页面只接受它自己发出的请求，别的网站不能借浏览器修改这里的配置。
 
 | 配置文件 | 用途 |
 | --- | --- |
@@ -61,14 +120,14 @@ uv run watcherobot app run .
 | `TYPESAFE_API_KEY` | 你画我猜的 JEV 答案判定凭据 |
 | `JEV_MODEL` / `JEV_CONFIDENCE_THRESHOLD` | 你画我猜的 JEV 模型与判定置信度，默认 `jev-latest` / `0.65` |
 | `LLM_API_KEY` | 当前配置文件所属 Agent 的 OpenAI 兼容接口凭据 |
-| `GAME_CATALOG` | 远程游戏的注册文件路径，默认项目中的 `games.json`；相对路径以主程序 `.env` 所在目录为基准 |
+| `GAME_CATALOG` | 远程游戏的注册文件路径，默认项目中的 `games.json`；相对路径以应用目录为基准 |
 | `OBSERVABILITY_PORT` | 可观测性页面的本机端口，默认 8790；不能使用 SDK 守护进程占用的 8765 和 8767 |
 
-`DASHSCOPE_BASE_URL` 是百炼业务空间的地址，换 key 时记得一起改。
+`DASHSCOPE_BASE_URL` 默认是百炼的公共地址；使用专属业务空间时改成对应的地址，换 key 时记得一起改。
 
 ## 文字模型
 
-主 Agent 和游戏 Agent 各自在自己的 `.env` 中设置 `LLM_MODEL_NAME`、`LLM_BASE_URL`、`LLM_API_KEY` 和请求参数。相同键名在不同文件中互不影响，运行时不会读取其他 Agent 的配置。全部 LLM 调用通过 OpenAI SDK 访问兼容 Chat Completions 的接口，使用原生 function calling 执行注册工具。主 Agent 的普通聊天回复直接交给 TTS。
+主 Agent 和游戏 Agent 各自在自己的配置里设置 `LLM_MODEL_NAME`、`LLM_BASE_URL`、`LLM_API_KEY` 和请求参数。全部 LLM 调用通过 OpenAI SDK 访问兼容 Chat Completions 的接口，使用原生 function calling 执行注册工具。主 Agent 的普通聊天回复直接交给 TTS。
 
 OpenAI 兼容接口在对应 Agent 的配置文件中填写，例如：
 
@@ -210,16 +269,19 @@ flowchart TD
 | `robot_agents/speech.py` | ASR/TTS WebSocket 协议、语音合成和识别时间关联 |
 | `robot_agents/audio_stream.py` | SDK PCM 播放、完成确认和取消处理 |
 | `robot_agents/microphone.py` | 麦克风收音和播报时静音 |
-| `robot_agents/config.py` | 配置读取和检查 |
+| `robot_agents/config.py` | 读取各 Agent 的 `settings.yaml` 和配置值（`AgentSettings`）、主 Agent 的配置和检查 |
+| `robot_agents/settings.yaml`、`games/<game_id>/settings.yaml` | 各 Agent 读取的配置项声明 |
+| `robot_agents/settings_page.py` | 设置页面的后端：按各 Agent 的 `settings.yaml` 生成表单、保存配置、启动时等配置填好 |
 | `robot_agents/assets/emojis/` | 公共表情 SVG |
 | `observability/events.py` | 事件总线、轮次与上下级关联、工具调用和 A2A 通信的记录入口 |
 | `observability/server.py` | 本机 HTTP 服务与 SSE 事件流，支持按事件 ID 续传，并推送“正在听到的话”这类只看当前值的状态 |
+| `observability/web/settings.html` | 设置页面：填写各 Agent 的服务配置 |
 | `observability/web/index.html` | 对话与轨迹页面：聊天样式的对话视图，按轮次分组的记录表与检查器 |
-| `scripts/` | 真机端到端测试和眼型预览工具 |
+| `scripts/` | 真机端到端测试、眼型预览工具、生成 `.env.example` 的脚本 |
 
 ## 添加游戏
 
-每个游戏位于 `games/<game_id>/`，目录包含 `__init__.py`、`SKILL.md`、`.env.example` 和入口文件 `agent.py`。游戏专用模块放在对应游戏目录内；公共语音、模型和显示能力位于 `robot_agents/`。
+每个游戏位于 `games/<game_id>/`，目录包含 `__init__.py`、`SKILL.md`、入口文件 `agent.py`、声明配置项的 `settings.yaml` 和读取它的 `config.py`。游戏专用模块放在对应游戏目录内；公共语音、模型和显示能力位于 `robot_agents/`。
 
 `SKILL.md` 的 frontmatter 声明游戏，正文写规则和流程，启动时整体写入游戏 Agent 的系统提示词：
 
@@ -246,7 +308,7 @@ required_capabilities: [motion]
 `agent.py` 的入口类是 `GameAgent`，继承 `robot_agents.skill_agent.SkillAgent`：
 
 - `skill = Skill.load(Path(__file__).with_name("SKILL.md"))` 读取游戏声明和流程。
-- `load_settings()` 读取本游戏目录的 `.env`，返回包含 `llm: LLMSettings` 的游戏配置；其他游戏专用配置由游戏自行定义。
+- `config = Settings` 指向本游戏的配置类。本游戏读取的环境变量按上面“配置项的声明”写在 `settings.yaml` 里，配置对象需要包含 `llm: LLMSettings`，其他配置由游戏自行定义。设置页面和启动时的读取都以这份声明为准。
 - `__init__(settings, device)` 调用父类构造函数，创建游戏状态。`device` 是异步设备执行函数，`await device(Presentation(...))` 执行图案、表情和动作。
 - `tools(turn)` 返回本游戏的工具。`turn.text` 是用户原话，`await turn.say(text)` 立刻回复一句话，`turn.end_session()` 标记本局结束。
 - `await self.react(expression, gesture)` 在规则工具判定出对错时调用，例如 `await self.react("happy", "nod")`。表情和动作立刻开始，不等动作做完；表情留到接下来这句话说完，屏幕再自动恢复成原来的图案或待机画面。本局结束后屏幕也会在最后一句话说完后自动回到待机画面，这两件事都不需要模型调用工具。

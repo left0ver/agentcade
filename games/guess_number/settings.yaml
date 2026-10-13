@@ -1,0 +1,24 @@
+# 猜数字读取的配置项。设置页面按这份文件生成表单，读取配置时也按它补默认值、检查必填项。
+#   key       环境变量名
+#   label     设置页面上显示的说明
+#   default   默认值，写成带引号的字符串；不写表示必填
+#   secret    true 表示密钥，页面上不回显
+#   advanced  true 表示一般不用改，页面上收在“更多设置”里
+options:
+  - key: LLM_API_KEY
+    label: 大模型的 API Key，用于主持游戏（OpenAI 兼容接口）
+    secret: true
+  - key: LLM_BASE_URL
+    label: 大模型的接口地址
+    default: "https://api.deepseek.com"
+  - key: LLM_MODEL_NAME
+    label: 大模型的名称
+    default: "deepseek-flash"
+  - key: LLM_TIMEOUT_SECONDS
+    label: 大模型一次请求最长等待的秒数
+    default: "180"
+    advanced: true
+  - key: LLM_EXTRA_BODY_JSON
+    label: 附加到大模型请求里的参数，JSON 格式
+    default: "{}"
+    advanced: true

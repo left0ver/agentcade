@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Agentcade</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%230c0c0e'/%3E%3Cpath d='M8.5 17.5q3-4.5 6 0M17.5 17.5q3-4.5 6 0' fill='none' stroke='%23fff' stroke-width='2.2' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="icon" href="assets/logo.svg">
 <style>
 :root {
   color-scheme: light dark;
@@ -36,7 +36,8 @@ button { font: inherit; color: inherit; }
   border-bottom: 1px solid var(--border);
 }
 .brand { display: flex; align-items: center; gap: 9px; font-size: 14px; font-weight: 650; }
-.avatar { flex: none; width: 26px; height: 26px; border-radius: 28%; box-shadow: 0 0 0 1px var(--border); }
+.logo { flex: none; width: 26px; height: 26px; }
+.avatar { flex: none; width: 26px; height: 26px; border-radius: 50%; }
 .tabs { display: flex; align-self: stretch; gap: 2px; margin-left: 10px; }
 .tabs button {
   position: relative; padding: 0 12px; border: 0; background: none; color: var(--muted);
@@ -59,6 +60,7 @@ button { font: inherit; color: inherit; }
   background: var(--bg); cursor: pointer;
 }
 .button:hover { background: var(--hover); }
+a.button { display: inline-flex; align-items: center; color: inherit; text-decoration: none; }
 .view { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .subbar {
   display: flex; align-items: center; gap: 10px; height: 42px; padding: 0 12px; flex: none;
@@ -236,7 +238,7 @@ button { font: inherit; color: inherit; }
   max-width: min(78%, 560px); padding: 9px 15px; border-radius: 18px 18px 5px 18px;
   background: var(--bubble); color: var(--bubble-text); white-space: pre-wrap; overflow-wrap: anywhere;
 }
-.msg.bot .avatar { width: 32px; height: 32px; margin-top: 1px; }
+.msg.bot .avatar { width: 36px; height: 36px; margin-top: -1px; }
 .msg.bot .body { flex: 1; min-width: 0; }
 .who { display: flex; align-items: center; gap: 8px; min-height: 18px; margin-bottom: 2px; font-size: 13px; line-height: 18px; }
 .who b { font-weight: 600; }
@@ -303,7 +305,6 @@ button { font: inherit; color: inherit; }
   font-size: 13px; line-height: 20px; color: var(--muted);
 }
 .act b { font-weight: 600; color: var(--text); }
-.face { display: block; background: #0c0c0e; }
 .face polyline { fill: none; stroke: #fff; stroke-linecap: round; stroke-linejoin: round; }
 .avatar.nod { animation: nod .9s ease-in-out; }
 .avatar.shake { animation: shake .9s ease-in-out; }
@@ -349,10 +350,6 @@ button { font: inherit; color: inherit; }
 </head>
 <body>
 <svg hidden>
-  <symbol id="face" viewBox="0 0 32 32">
-    <rect width="32" height="32" rx="9" fill="#0c0c0e"/>
-    <path d="M8.5 17.5q3-4.5 6 0M17.5 17.5q3-4.5 6 0" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round"/>
-  </symbol>
   <symbol id="mark-ok" viewBox="0 0 14 14">
     <path d="M3 7.4l2.6 2.6L11 4.4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
   </symbol>
@@ -364,7 +361,7 @@ button { font: inherit; color: inherit; }
   </symbol>
 </svg>
 <header class="top">
-  <div class="brand"><svg class="avatar"><use href="#face"/></svg><b>Agentcade</b></div>
+  <div class="brand"><img class="logo" src="assets/logo.svg" alt=""><b>Agentcade</b></div>
   <nav class="tabs" role="tablist">
     <button id="tab-chat" type="button" role="tab" aria-controls="view-chat" aria-selected="true">对话</button>
     <button id="tab-trajectory" type="button" role="tab" aria-controls="view-trajectory" aria-selected="false">轨迹</button>
@@ -373,12 +370,13 @@ button { font: inherit; color: inherit; }
   <div class="counts" id="counts"></div>
   <div class="status" id="status"><i class="dot"></i><span>连接中</span></div>
   <button class="button" id="clear" type="button">清空</button>
+  <a class="button" href="settings">设置</a>
 </header>
 <main class="view chat" id="view-chat" role="tabpanel" aria-labelledby="tab-chat">
   <div class="chat-scroll" id="chat-scroll">
     <div class="thread" id="thread">
       <div class="hello" id="hello">
-        <svg class="avatar"><use href="#face"/></svg>
+        <img class="avatar" src="assets/avatar.svg" alt="">
         <h2>对小懒说句话试试</h2>
         <p>你们的对话会实时出现在这里，包括它用了哪些工具。</p>
       </div>
@@ -697,6 +695,8 @@ const chat = {
   waiting: new Map(), hearing: "", online: false, follow: true, game: "",
 };
 const SVG = "http://www.w3.org/2000/svg";
+// 小懒的头像，以及头像里那块圆形屏幕的位置和底色（按头像文件 512 的画布算），表情画在这块屏幕上。
+const AVATAR = { file: "assets/avatar.svg", x: 256, y: 258.8, r: 109, screen: "#14141C" };
 const seconds = (value) => `${value.toFixed(1)} 秒`;
 
 function symbol(id, className) {
@@ -748,7 +748,8 @@ function botMessage(event) {
   if (chat.current) return chat.current;
   const node = el("div", "msg bot");
   const message = {
-    node, tag: el("span", "tag"), used: el("span"), flow: el("div", "flow"), avatar: symbol("face", "avatar"),
+    node, tag: el("span", "tag"), used: el("span"), flow: el("div", "flow"),
+    avatar: Object.assign(el("img", "avatar"), { src: AVATAR.file, alt: "" }),
   };
   message.tag.hidden = true;
   const meta = el("span", "meta");
@@ -942,25 +943,43 @@ function brief(value) {
   return text === "()" ? "" : text;
 }
 
-function face(hex, className) {
-  // 把机器人屏幕上显示的表情图案画出来，小尺寸下加粗线条保证看得清。
+function face(hex) {
+  // 头像里有一块圆形屏幕：把机器人当时显示的表情画在这块屏幕上，盖住原来的眼睛。
   const strokes = decodeVector(hex);
   if (!strokes) return null;
+  const points = strokes.flatMap((stroke) => stroke.points);
+  const [xs, ys] = [points.map((point) => point[0]), points.map((point) => point[1])];
+  const [left, top] = [Math.min(...xs), Math.min(...ys)];
+  const [width, height] = [Math.max(...xs) - left, Math.max(...ys) - top];
+  // 表情缩放到占屏幕的七成多，线条加粗到小尺寸下也看得清。
+  const scale = AVATAR.r * 1.5 / Math.max(width, height, 1);
   const node = document.createElementNS(SVG, "svg");
-  node.setAttribute("viewBox", "60 60 292 292");
-  node.setAttribute("class", className);
+  node.setAttribute("viewBox", "0 0 512 512");
+  node.setAttribute("class", "avatar face");
+  const picture = document.createElementNS(SVG, "image");
+  picture.setAttribute("href", AVATAR.file);
+  picture.setAttribute("width", 512);
+  picture.setAttribute("height", 512);
+  const screen = document.createElementNS(SVG, "circle");
+  for (const [name, value] of [["cx", AVATAR.x], ["cy", AVATAR.y], ["r", AVATAR.r], ["fill", AVATAR.screen]]) {
+    screen.setAttribute(name, value);
+  }
+  const group = document.createElementNS(SVG, "g");
+  group.setAttribute("transform", `translate(${AVATAR.x} ${AVATAR.y}) scale(${scale}) `
+    + `translate(${-(left + width / 2)} ${-(top + height / 2)})`);
   for (const stroke of strokes) {
     const line = document.createElementNS(SVG, "polyline");
-    const points = stroke.points.length === 1 ? [stroke.points[0], stroke.points[0]] : stroke.points;
-    line.setAttribute("points", points.map((point) => point.join(",")).join(" "));
-    line.setAttribute("stroke-width", Math.max(stroke.width, 16));
-    node.append(line);
+    const dots = stroke.points.length === 1 ? [stroke.points[0], stroke.points[0]] : stroke.points;
+    line.setAttribute("points", dots.map((point) => point.join(",")).join(" "));
+    line.setAttribute("stroke-width", Math.max(stroke.width, 20 / scale));
+    group.append(line);
   }
+  node.append(picture, screen, group);
   return node;
 }
 
 function reaction(event) {
-  // 这条消息的头像换成机器人当时的表情并做一次点头或摇头，正文里用一个小框说明它做了什么。
+  // 这条消息的头像换上机器人当时的表情并做一次点头或摇头，正文里用一个小框说明它做了什么。
   const output = event.payload.output;
   const done = event.payload.completed;
   const parts = [
@@ -971,11 +990,11 @@ function reaction(event) {
   const node = el("div", "act");
   node.append(el("b", "", "小懒"), el("span", "", parts.join("，") + (done ? "" : "（没有做成）")));
   const message = flowAppend(event, node);
-  const large = done && event.payload.face ? face(event.payload.face, "avatar face") : null;
-  if (!large) return;
-  if (output.gesture) large.classList.add({ nod: "nod", shake_head: "shake" }[output.gesture]);
-  message.avatar.replaceWith(large);
-  message.avatar = large;
+  if (!done) return;
+  const avatar = (event.payload.face && face(event.payload.face)) || message.avatar;
+  if (output.gesture) avatar.classList.add({ nod: "nod", shake_head: "shake" }[output.gesture]);
+  message.avatar.replaceWith(avatar);
+  message.avatar = avatar;
 }
 
 function sketch(event) {
@@ -1353,7 +1372,7 @@ function setStatus(name, text) {
 
 function connect() {
   const source = new EventSource(`events?after=${encodeURIComponent(state.cursor)}`);
-  source.addEventListener("open", () => setStatus("live", "实时"));
+  source.addEventListener("open", () => setStatus("live", "已连接"));
   source.addEventListener("error", () => {
     setStatus("down", "已断开，正在重连");
     // 应用退出后浏览器会停止自动重连，这里带着最后的事件 ID 重新建立连接。

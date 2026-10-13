@@ -25,5 +25,5 @@
   ],
   "description": "与机器人聊天，选择你画我猜或猜数字，通过 A2A 接入更多游戏。",
   "author": "Local Developer",
-  "icon": "icon.svg"
+  "icon": "assets/logo.svg"
 }

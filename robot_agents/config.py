@@ -1,15 +1,67 @@
 import json
+import os
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import ClassVar, Self
 from urllib.parse import urlsplit, urlunsplit
 
+import yaml
 from dotenv import dotenv_values
+from pydantic import BaseModel, ConfigDict, Field
 
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 
 
+class Option(BaseModel):
+    """一项配置的声明，写在每个 Agent 目录的 settings.yaml 里。
+
+    设置页面按这份声明生成表单，读取配置时也按它补默认值、检查必填项。
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True, str_strip_whitespace=True)
+    key: str = Field(pattern=r"^[A-Z][A-Z0-9_]*$")  # 环境变量名
+    label: str = Field(min_length=1)  # 设置页面上显示的说明
+    default: str = ""  # 没有默认值的是必填项
+    secret: bool = False  # 密钥，页面上不回显
+    advanced: bool = False  # 一般不用改，页面上收在“更多设置”里
+
+
+class OptionFile(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    options: tuple[Option, ...]
+
+
+def load_options(path: Path) -> tuple[Option, ...]:
+    """读取一个 Agent 目录里的配置项声明。"""
+    options = OptionFile.model_validate(yaml.safe_load(path.read_text(encoding="utf-8"))).options
+    if len({option.key for option in options}) != len(options):
+        raise ValueError(f"配置项不能重名：{path}")
+    return options
+
+
+def user_config_dir() -> Path:
+    """安装后的应用保存用户配置的目录，在源码目录之外，升级和重装应用时不会丢。"""
+    app_id = json.loads((ROOT / "app.json").read_text(encoding="utf-8"))["id"]
+    if sys.platform == "win32":
+        base = Path(os.environ.get("LOCALAPPDATA") or Path.home() / "AppData/Local")
+    elif sys.platform == "darwin":
+        base = Path.home() / "Library/Application Support"
+    else:
+        base = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config")
+    return base / "watcherobot" / "applications" / app_id / "config"
+
+
+def config_file(path: Path) -> Path:
+    """Agent 目录里有 .env 时用它（本地开发），没有时用用户配置目录里对应的文件。"""
+    if path.is_file() or not path.is_relative_to(ROOT):
+        return path
+    return user_config_dir() / f"{path.parent.relative_to(ROOT).as_posix()}.env"
+
+
 def read_environment(path: Path) -> dict[str, str]:
+    path = config_file(path)
     if not path.is_file():
         raise FileNotFoundError(f"配置文件不存在：{path}")
     values = dotenv_values(path, interpolate=False)
@@ -18,22 +70,63 @@ def read_environment(path: Path) -> dict[str, str]:
     return dict(values)
 
 
+def read_options(options: tuple[Option, ...], path: Path) -> dict[str, str]:
+    """按声明读取一个 Agent 的配置：没写的用默认值，必填项没填就报错。"""
+    stored = read_environment(path)
+    values = {}
+    for option in options:
+        values[option.key] = (stored.get(option.key) or "").strip() or option.default
+        if not values[option.key]:
+            raise ValueError(f"还没有填写 {option.key}")
+    return values
+
+
+class AgentSettings:
+    """主 Agent 和游戏 Agent 的配置都按这个约定写：
+
+    - 目录里的 settings.yaml 列出这个 Agent 读取的全部环境变量；
+    - 配置类用 DIRECTORY 指明自己的目录，实际的值在这个目录的 .env 里，
+      没有 .env 时在用户配置目录里；
+    - from_values 把读到的值转换成配置对象。
+
+    每个 Agent 只读自己的那一份，互相不共用。
+    """
+
+    DIRECTORY: ClassVar[Path]
+
+    @classmethod
+    def options(cls) -> tuple[Option, ...]:
+        return load_options(cls.DIRECTORY / "settings.yaml")
+
+    @classmethod
+    def env_file(cls) -> Path:
+        return cls.DIRECTORY / ".env"
+
+    @classmethod
+    def from_environment(cls, path: Path | None = None) -> Self:
+        return cls.from_values(read_options(cls.options(), path or cls.env_file()))
+
+    @classmethod
+    def from_values(cls, values: dict[str, str]) -> Self:
+        raise NotImplementedError
+
+
 @dataclass(frozen=True)
 class LLMSettings:
-    api_key: str = field(default="", repr=False)
-    base_url: str = ""
-    model_name: str = ""
-    timeout_seconds: int = 180
-    extra_body: dict = field(default_factory=dict)
+    api_key: str = field(repr=False)
+    base_url: str
+    model_name: str
+    timeout_seconds: int
+    extra_body: dict
 
     @classmethod
     def from_values(cls, values: dict[str, str]) -> "LLMSettings":
         return cls(
-            api_key=values.get("LLM_API_KEY", ""),
-            base_url=values.get("LLM_BASE_URL", ""),
-            model_name=values.get("LLM_MODEL_NAME", ""),
-            timeout_seconds=int(values.get("LLM_TIMEOUT_SECONDS", "180")),
-            extra_body=json.loads(values.get("LLM_EXTRA_BODY_JSON", "{}")),
+            api_key=values["LLM_API_KEY"],
+            base_url=values["LLM_BASE_URL"],
+            model_name=values["LLM_MODEL_NAME"],
+            timeout_seconds=int(values["LLM_TIMEOUT_SECONDS"]),
+            extra_body=json.loads(values["LLM_EXTRA_BODY_JSON"]),
         )
 
     def __post_init__(self) -> None:
@@ -55,18 +148,20 @@ class LLMSettings:
 
 
 @dataclass(frozen=True)
-class Settings:
+class Settings(AgentSettings):
+    DIRECTORY: ClassVar[Path] = Path(__file__).parent
+
     dashscope_api_key: str = field(repr=False)
     llm: LLMSettings
-    game_catalog: Path = ROOT / "games.json"
-    base_url: str = DEFAULT_BASE_URL
-    asr_model: str = "qwen-audio-3.1-asr-flash-streaming"
-    tts_model: str = "qwen-audio-3.1-tts-flash"
-    tts_voice: str = "yuxiaoyun_v3.1"
-    speech_timeout_seconds: int = 90
-    asr_silence_ms: int = 800
-    input_gain: float = 4.0
-    observability_port: int = 8790
+    game_catalog: Path
+    base_url: str
+    asr_model: str
+    tts_model: str
+    tts_voice: str
+    speech_timeout_seconds: int
+    asr_silence_ms: int
+    input_gain: float
+    observability_port: int
 
     def __post_init__(self) -> None:
         for name in (
@@ -95,23 +190,17 @@ class Settings:
         ))
 
     @classmethod
-    def from_environment(cls, path: Path | None = None) -> "Settings":
-        if path is None:
-            path = Path(__file__).with_name(".env")
-        values = read_environment(path)
-        catalog = Path(values.get("GAME_CATALOG") or ROOT / "games.json")
-        if not catalog.is_absolute():
-            catalog = path.parent / catalog
+    def from_values(cls, values: dict[str, str]) -> "Settings":
         return cls(
             dashscope_api_key=values["DASHSCOPE_API_KEY"],
             llm=LLMSettings.from_values(values),
-            game_catalog=catalog.resolve(),
-            base_url=values.get("DASHSCOPE_BASE_URL", DEFAULT_BASE_URL),
-            asr_model=values.get("QWEN_ASR_MODEL", "qwen-audio-3.1-asr-flash-streaming"),
-            tts_model=values.get("QWEN_TTS_MODEL", "qwen-audio-3.1-tts-flash"),
-            tts_voice=values.get("QWEN_TTS_VOICE", "yuxiaoyun_v3.1"),
-            speech_timeout_seconds=int(values.get("SPEECH_TIMEOUT_SECONDS", "90")),
-            asr_silence_ms=int(values.get("ASR_SILENCE_MS", "800")),
-            input_gain=float(values.get("ASR_INPUT_GAIN", "4")),
-            observability_port=int(values.get("OBSERVABILITY_PORT", "8790")),
+            game_catalog=(ROOT / values["GAME_CATALOG"]).resolve(),
+            base_url=values["DASHSCOPE_BASE_URL"],
+            asr_model=values["QWEN_ASR_MODEL"],
+            tts_model=values["QWEN_TTS_MODEL"],
+            tts_voice=values["QWEN_TTS_VOICE"],
+            speech_timeout_seconds=int(values["SPEECH_TIMEOUT_SECONDS"]),
+            asr_silence_ms=int(values["ASR_SILENCE_MS"]),
+            input_gain=float(values["ASR_INPUT_GAIN"]),
+            observability_port=int(values["OBSERVABILITY_PORT"]),
         )

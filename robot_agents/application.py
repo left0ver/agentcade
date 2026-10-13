@@ -2,6 +2,7 @@ import asyncio
 import logging
 
 from observability.server import serve
+from robot_agents import settings_page
 from robot_agents.game_client import connect_games
 from robot_agents.main_agent import MainAgent
 from robot_agents.microphone import MicrophoneInput
@@ -71,13 +72,15 @@ def route_logs(app):
         target.handlers = list(app.logger.handlers)
 
 
-async def run_application(app, settings):
+async def run_application(app):
     route_logs(app)
-    microphone = MicrophoneInput(app.robot)
-    output = OutputCoordinator(app, settings, microphone)
-    async with (
-        serve(settings.observability_port) as url,
-        connect_games(settings.game_catalog, output.execute) as games,
-    ):
-        app.logger.info("可观测性页面：%s", url)
-        await RobotApplication(app, settings, games, microphone, output).run()
+    # 页面先启动：服务配置还没填好时，用户要在它的设置页面里填写。
+    async with serve(settings_page.port(), routes=settings_page.routes()) as url:
+        app.logger.info("对话页面：%s", url)
+        settings = await settings_page.ready(app, url)
+        if settings is None:
+            return
+        microphone = MicrophoneInput(app.robot)
+        output = OutputCoordinator(app, settings, microphone)
+        async with connect_games(settings.game_catalog, output.execute) as games:
+            await RobotApplication(app, settings, games, microphone, output).run()

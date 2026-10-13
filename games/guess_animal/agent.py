@@ -17,7 +17,7 @@ GENERATION_ATTEMPTS = 3
 
 class GameAgent(SkillAgent):
     skill = Skill.load(Path(__file__).with_name("SKILL.md"))
-    load_settings = staticmethod(Settings.from_environment)
+    config = Settings
 
     def __init__(self, settings, device):
         super().__init__(settings, device)
