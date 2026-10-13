@@ -5,8 +5,8 @@ import time
 from collections.abc import Awaitable, Callable
 from contextlib import suppress
 
+from agentcade.expressions import segmented_progress_vector
 from observability import describe
-from robot_agents.expressions import segmented_progress_vector
 
 logger = logging.getLogger(__name__)
 

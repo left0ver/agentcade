@@ -7,9 +7,9 @@
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-from robot_agents.settings_page import sections
+from agentcade.settings_page import sections
 
 
 def example(section) -> str:

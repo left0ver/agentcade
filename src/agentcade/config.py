@@ -10,7 +10,9 @@ import yaml
 from dotenv import dotenv_values
 from pydantic import BaseModel, ConfigDict, Field
 
-ROOT = Path(__file__).resolve().parent.parent
+# 源码都在 src 下；应用目录是它的上一级，放着 app.json、games.json 和 assets。
+SOURCE = Path(__file__).resolve().parent.parent
+ROOT = SOURCE.parent
 DEFAULT_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 
 
@@ -55,9 +57,9 @@ def user_config_dir() -> Path:
 
 def config_file(path: Path) -> Path:
     """Agent 目录里有 .env 时用它（本地开发），没有时用用户配置目录里对应的文件。"""
-    if path.is_file() or not path.is_relative_to(ROOT):
+    if path.is_file() or not path.is_relative_to(SOURCE):
         return path
-    return user_config_dir() / f"{path.parent.relative_to(ROOT).as_posix()}.env"
+    return user_config_dir() / f"{path.parent.relative_to(SOURCE).as_posix()}.env"
 
 
 def read_environment(path: Path) -> dict[str, str]:

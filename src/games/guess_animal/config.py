@@ -2,7 +2,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import ClassVar
 
-from robot_agents.config import AgentSettings, LLMSettings
+from agentcade.config import AgentSettings, LLMSettings
 
 
 @dataclass(frozen=True)

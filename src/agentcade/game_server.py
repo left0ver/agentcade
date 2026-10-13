@@ -23,8 +23,8 @@ from starlette.applications import Starlette
 from starlette.routing import Route
 
 import observability
-from robot_agents.protocol import PROTOCOL_VERSION, GameInput, GameReply, from_parts, to_part
-from robot_agents.task_store import GameTaskStore
+from agentcade.protocol import PROTOCOL_VERSION, GameInput, GameReply, from_parts, to_part
+from agentcade.task_store import GameTaskStore
 
 logger = logging.getLogger(__name__)
 

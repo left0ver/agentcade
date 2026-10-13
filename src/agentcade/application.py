@@ -1,13 +1,13 @@
 import asyncio
 import logging
 
+from agentcade import settings_page
+from agentcade.game_client import connect_games
+from agentcade.main_agent import MainAgent
+from agentcade.microphone import MicrophoneInput
+from agentcade.output import OutputCoordinator
+from agentcade.speech_input import SpeechInput
 from observability.server import serve
-from robot_agents import settings_page
-from robot_agents.game_client import connect_games
-from robot_agents.main_agent import MainAgent
-from robot_agents.microphone import MicrophoneInput
-from robot_agents.output import OutputCoordinator
-from robot_agents.speech_input import SpeechInput
 
 
 class RobotApplication:
@@ -65,7 +65,7 @@ class RobotApplication:
 
 def route_logs(app):
     """各模块的告警和错误写入应用日志，和运行记录出现在同一个地方。"""
-    for name in ("robot_agents", "games", "observability"):
+    for name in ("agentcade", "games", "observability"):
         target = logging.getLogger(name)
         target.setLevel(logging.INFO)
         target.propagate = False

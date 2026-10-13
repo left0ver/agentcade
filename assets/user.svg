@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#8DBBFF"/>
+      <stop offset="1" stop-color="#3F6BF0"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" fill="url(#bg)"/>
+  <!-- 肩膀 -->
+  <path d="M92 512C92 408 166 344 256 344C346 344 420 408 420 512Z" fill="#2747C4"/>
+  <!-- 头 -->
+  <circle cx="256" cy="214" r="104" fill="#D9E6FF"/>
+  <circle cx="256" cy="208" r="102" fill="#FFFFFF"/>
+  <rect x="214" y="182" width="20" height="34" rx="10" fill="#23264F"/>
+  <rect x="278" y="182" width="20" height="34" rx="10" fill="#23264F"/>
+  <ellipse cx="196" cy="236" rx="14" ry="9" fill="#FF9FB2"/>
+  <ellipse cx="316" cy="236" rx="14" ry="9" fill="#FF9FB2"/>
+  <path d="M240 238Q256 253 272 238" fill="none" stroke="#23264F" stroke-width="9.5" stroke-linecap="round"/>
+</svg>

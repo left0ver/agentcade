@@ -8,7 +8,7 @@
 
 ## 通信格式 `desktop-game/5`
 
-主 Agent 发一条消息，游戏 Agent 把它当作用户输入，回复一条或多条要播报的话。两个方向都用 A2A 的 DataPart 承载 JSON，模型定义在 `robot_agents/protocol.py`。
+主 Agent 发一条消息，游戏 Agent 把它当作用户输入，回复一条或多条要播报的话。两个方向都用 A2A 的 DataPart 承载 JSON，模型定义在 `src/agentcade/protocol.py`。
 
 主 Agent → 游戏 Agent（`GameInput`）：
 
@@ -60,7 +60,7 @@ sequenceDiagram
 
 ## 游戏 Agent
 
-`robot_agents/skill_agent.py` 的 `SkillAgent` 是所有游戏共用的运行时，子类提供三样东西：
+`src/agentcade/skill_agent.py` 的 `SkillAgent` 是所有游戏共用的运行时，子类提供三样东西：
 
 | 成员 | 作用 |
 | --- | --- |

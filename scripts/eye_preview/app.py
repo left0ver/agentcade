@@ -6,10 +6,10 @@ from pathlib import Path
 from watcherobot.application import ApplicationContext
 from watcherobot.inputs import RollerEvent
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
-from robot_agents.eyes import HIDDEN_EYES, LOOKS, STANDBY_EYES
-from robot_agents.vector import Stroke, encode_vector
+from agentcade.eyes import HIDDEN_EYES, LOOKS, STANDBY_EYES
+from agentcade.vector import Stroke, encode_vector
 
 AUTO_SECONDS = 8
 TOTAL_SECONDS = 600

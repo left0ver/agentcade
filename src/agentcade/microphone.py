@@ -8,8 +8,8 @@ from contextlib import suppress
 from watcherobot.errors import CommandError, WatcheRobotError
 from watcherobot.media import AudioFormat
 
+from agentcade.audio_stream import CapturedPcm, sdk_command
 from observability import describe
-from robot_agents.audio_stream import CapturedPcm, sdk_command
 
 logger = logging.getLogger(__name__)
 

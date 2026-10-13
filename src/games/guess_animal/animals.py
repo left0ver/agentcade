@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from robot_agents.vector import Stroke, encode_vector
+from agentcade.vector import Stroke, encode_vector
 
 
 @dataclass(frozen=True)

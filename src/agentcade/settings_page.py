@@ -19,11 +19,11 @@ from dotenv.parser import parse_stream
 from starlette.responses import FileResponse, JSONResponse
 from starlette.routing import Route
 
+from agentcade.config import SOURCE, AgentSettings, Settings, config_file
+from agentcade.game_client import discover
 from observability.server import PAGE
-from robot_agents.config import ROOT, AgentSettings, Settings, config_file
-from robot_agents.game_client import discover
 
-MAIN = "robot_agents"
+MAIN = "agentcade"
 SETTINGS_PAGE = PAGE.with_name("settings.html")
 MAX_VALUE_LENGTH = 4096
 status = {"waiting": False}
@@ -50,7 +50,7 @@ class Section:
 
 def sections() -> list[Section]:
     found = [Section(MAIN, "主 Agent（小懒）", Settings)]
-    for game in discover(ROOT / "games"):
+    for game in discover(SOURCE / "games"):
         module, name = game.factory.split(":", 1)
         factory = getattr(importlib.import_module(module), name)
         found.append(Section(f"games/{game.id}", factory.skill.descriptor.name, factory.config))

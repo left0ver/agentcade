@@ -4,8 +4,8 @@ import logging
 
 from openai import AsyncOpenAI
 
-from robot_agents.config import LLMSettings
-from robot_agents.tools import ToolRegistry
+from agentcade.config import LLMSettings
+from agentcade.tools import ToolRegistry
 
 logger = logging.getLogger(__name__)
 

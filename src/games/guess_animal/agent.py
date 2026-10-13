@@ -1,14 +1,14 @@
 import logging
 from pathlib import Path
 
+from agentcade.protocol import Presentation
+from agentcade.skill import Skill
+from agentcade.skill_agent import SkillAgent
+from agentcade.tools import NoInput, Tool, original_text_input
 from games.guess_animal.config import Settings
 from games.guess_animal.game import Decision, Game
 from games.guess_animal.generator import AnimalGenerator
 from games.guess_animal.judge import JevJudge
-from robot_agents.protocol import Presentation
-from robot_agents.skill import Skill
-from robot_agents.skill_agent import SkillAgent
-from robot_agents.tools import NoInput, Tool, original_text_input
 
 logger = logging.getLogger(__name__)
 

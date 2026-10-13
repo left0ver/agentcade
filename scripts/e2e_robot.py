@@ -19,10 +19,10 @@ from pathlib import Path
 import httpx
 
 ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / "src"))
 
-from robot_agents.config import Settings
-from robot_agents.speech import QwenSpeech
+from agentcade.config import Settings
+from agentcade.speech import QwenSpeech
 
 # 机器人播报用的合成音量较低，经电脑扬声器播放时放大到机器人能够听清。
 SPEAKER_GAIN = "6"

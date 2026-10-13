@@ -11,9 +11,9 @@ from a2a.types import Message, Role, SendMessageRequest, TaskState
 from pydantic import Field, TypeAdapter
 
 import observability
-from robot_agents.config import ROOT
-from robot_agents.game_server import serve_game
-from robot_agents.protocol import (
+from agentcade.config import SOURCE
+from agentcade.game_server import serve_game
+from agentcade.protocol import (
     PROTOCOL_VERSION,
     GameDescriptor,
     GameInput,
@@ -98,7 +98,7 @@ def discover(directory: Path) -> list[LocalGame]:
 
 
 @asynccontextmanager
-async def connect_games(path: Path, device, directory: Path = ROOT / "games"):
+async def connect_games(path: Path, device, directory: Path = SOURCE / "games"):
     # 本地游戏放进游戏目录就会被发现；注册文件只用来接入远程游戏或目录以外的游戏。
     entries = discover(directory)
     if path.is_file():

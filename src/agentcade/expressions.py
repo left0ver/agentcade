@@ -1,12 +1,12 @@
 import math
+import pathlib
 from functools import lru_cache
 from typing import Literal
 
 from shapely import LineString, Polygon
 from svgelements import SVG, Circle, Close, Color, Line, Move, Path, Rect, Shape
 
-from robot_agents.config import ROOT
-from robot_agents.vector import Point, Stroke, encode_vector
+from agentcade.vector import Point, Stroke, encode_vector
 
 ExpressionCode = Literal["009", "111", "141"]
 EXPRESSION_FILES = {
@@ -19,7 +19,7 @@ WHITE = Color("white")
 
 @lru_cache(maxsize=3)
 def _shapes(code: ExpressionCode) -> tuple[Shape, ...]:
-    source = ROOT / "robot_agents" / "assets" / "emojis" / EXPRESSION_FILES[code]
+    source = pathlib.Path(__file__).with_name("assets") / "emojis" / EXPRESSION_FILES[code]
     svg = SVG.parse(str(source))
     if svg.width != 412 or svg.height != 412:
         raise ValueError("表情 SVG 必须使用 412×412 画布")

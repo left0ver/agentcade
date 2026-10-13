@@ -4,8 +4,8 @@ from collections import deque
 from contextlib import aclosing
 
 import observability
-from robot_agents.audio_stream import CapturedPcm, PcmInputGain
-from robot_agents.speech import QwenSpeech
+from agentcade.audio_stream import CapturedPcm, PcmInputGain
+from agentcade.speech import QwenSpeech
 
 MAX_RECONNECT_DELAY_SECONDS = 10
 STABLE_SESSION_SECONDS = 60

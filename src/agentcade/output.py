@@ -3,13 +3,13 @@ import logging
 
 from watcherobot.errors import CommandError
 
+from agentcade.audio_stream import PcmAudioPlayer, sdk_command
+from agentcade.expressions import expression_vector
+from agentcade.eyes import HIDDEN_EYES, STANDBY_EYES
+from agentcade.progress import ProgressDisplay
+from agentcade.protocol import Presentation
+from agentcade.speech import QwenSpeech
 from observability.events import bus, describe, failure, scope
-from robot_agents.audio_stream import PcmAudioPlayer, sdk_command
-from robot_agents.expressions import expression_vector
-from robot_agents.eyes import HIDDEN_EYES, STANDBY_EYES
-from robot_agents.progress import ProgressDisplay
-from robot_agents.protocol import Presentation
-from robot_agents.speech import QwenSpeech
 
 logger = logging.getLogger(__name__)
 

@@ -3,10 +3,10 @@ from pathlib import Path
 
 from pydantic import Field
 
+from agentcade.skill import Skill
+from agentcade.skill_agent import SkillAgent
+from agentcade.tools import NoInput, Tool, ToolInput
 from games.guess_number.config import Settings
-from robot_agents.skill import Skill
-from robot_agents.skill_agent import SkillAgent
-from robot_agents.tools import NoInput, Tool, ToolInput
 
 MAX_ATTEMPTS = 5
 

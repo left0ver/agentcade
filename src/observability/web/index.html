@@ -1150,7 +1150,7 @@ function jsonNode(label, value, depth) {
 }
 
 function decodeVector(hex) {
-  // 与 robot_agents/vector.py 的编码对应：版本、笔画数，每条笔画为宽度、点数和 16 位大端坐标。
+  // 与 agentcade/vector.py 的编码对应：版本、笔画数，每条笔画为宽度、点数和 16 位大端坐标。
   if (typeof hex !== "string" || !/^(?:[0-9a-f]{2})+$/.test(hex)) return null;
   const bytes = hex.match(/../g).map((pair) => parseInt(pair, 16));
   if (bytes[0] !== 1) return null;

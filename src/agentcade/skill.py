@@ -3,7 +3,7 @@ from pathlib import Path
 
 import yaml
 
-from robot_agents.protocol import GameDescriptor
+from agentcade.protocol import GameDescriptor
 
 
 @dataclass(frozen=True)

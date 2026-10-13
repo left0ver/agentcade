@@ -9,11 +9,11 @@ from uuid import uuid4
 from pydantic import Field, create_model
 
 import observability
+from agentcade.config import Settings
+from agentcade.protocol import GameInput, Presentation
+from agentcade.providers import OpenAIProvider
+from agentcade.tools import NoInput, Tool, ToolInput, ToolRegistry, original_text_input
 from observability.events import SCOPE
-from robot_agents.config import Settings
-from robot_agents.protocol import GameInput, Presentation
-from robot_agents.providers import OpenAIProvider
-from robot_agents.tools import NoInput, Tool, ToolInput, ToolRegistry, original_text_input
 
 logger = logging.getLogger(__name__)
 

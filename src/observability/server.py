@@ -16,7 +16,7 @@ from observability.events import bus
 
 PAGE = Path(__file__).with_name("web") / "index.html"
 # 项目的 logo 和小懒的头像，页面直接用这里的文件。
-ASSETS = Path(__file__).resolve().parent.parent / "assets"
+ASSETS = Path(__file__).resolve().parents[2] / "assets"
 
 
 class EmbeddedServer(uvicorn.Server):

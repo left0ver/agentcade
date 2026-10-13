@@ -5,10 +5,10 @@ from typing import Literal
 
 from pydantic import Field
 
-from robot_agents.protocol import GameInput, GameReply, Presentation
-from robot_agents.providers import OpenAIProvider
-from robot_agents.skill import Skill
-from robot_agents.tools import Tool, ToolInput, ToolRegistry
+from agentcade.protocol import GameInput, GameReply, Presentation
+from agentcade.providers import OpenAIProvider
+from agentcade.skill import Skill
+from agentcade.tools import Tool, ToolInput, ToolRegistry
 
 logger = logging.getLogger(__name__)
 
