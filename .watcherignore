@@ -2,3 +2,4 @@
 scripts/
 .claude/
 懒羊羊tts.wav
+src/agentcade/publish.py

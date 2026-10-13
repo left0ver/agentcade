@@ -1,6 +1,6 @@
 {
   "schema_version": 2,
-  "id": "local.agentcade",
+  "id": "com.left0ver.agentcade",
   "name": "Agentcade",
   "version": "0.1.0",
   "requires_watcherobot": ">=0.1.10,<0.2",
@@ -20,10 +20,9 @@
     "websockets>=15,<16"
   ],
   "supported_host_platforms": [
-    "windows",
     "macos"
   ],
   "description": "与机器人聊天，选择你画我猜或猜数字，通过 A2A 接入更多游戏。",
-  "author": "Local Developer",
+  "author": "left0ver",
   "icon": "assets/logo.svg"
 }

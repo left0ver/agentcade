@@ -24,6 +24,14 @@ dependencies = [
     "websockets>=15,<16",
 ]
 
+[project.scripts]
+# uv run publish：登录发布平台并发布应用源码，见 src/agentcade/publish.py。
+publish = "agentcade.publish:main"
+
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
 [dependency-groups]
 dev = ["ruff>=0.12,<1"]
 
