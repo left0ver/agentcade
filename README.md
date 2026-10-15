@@ -1,351 +1,141 @@
-# Agentcade
+<p align="center"><img src="assets/logo.svg" width="96" alt="Agentcade"></p>
 
-主 Agent 负责语音聊天和游戏选择，通过 A2A 与独立游戏 Agent 通信。目前提供“你画我猜”和“猜数字”。`src/games/` 下的每个游戏目录启动时自动接入，新增游戏只需要新增一个目录。
+<h1 align="center">Agentcade</h1>
 
-说“有哪些游戏”查看目录，说“开始猜数字”或“玩第二个”选择游戏。游戏期间可以聊天，也可以直接继续回答；说“继续游戏”查询当前进度。等待用户输入期间保持游戏状态。
+<p align="center">
+  <a href="https://huggingface.co/spaces/left0ver/WatcherRobot-com.left0ver.agentcade"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Space-FFD21E" alt="Hugging Face Space"></a>
+  <img src="https://img.shields.io/badge/python-%E2%89%A53.11-3776AB?logo=python&logoColor=white" alt="Python 3.11+">
+  <img src="https://img.shields.io/badge/WatcheRobot%20SDK-%E2%89%A50.1.10-6E56CF" alt="WatcheRobot SDK 0.1.10+">
+  <img src="https://img.shields.io/badge/A2A-desktop--game%2F5-0C8585" alt="A2A desktop-game/5">
+  <img src="https://img.shields.io/badge/platform-macOS-lightgrey?logo=apple" alt="macOS">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="MIT License"></a>
+</p>
 
-同时只能运行一个游戏。说“结束游戏”退出，结束播报和设备操作完成后才能开始其他游戏。直接要求换游戏时，机器人会提示先退出当前游戏。
+桌面机器人“小懒”：用语音和它聊天、玩小游戏。主 Agent 负责聊天和选择游戏，每个游戏是一个独立的 Agent，通过 A2A 通信。现在有“你画我猜”和“猜数字”，往 `src/games/` 里放一个目录就能加一个新游戏。
+
+## 怎么玩
+
+说“有哪些游戏”查看游戏，说“玩猜数字”开始，说“结束游戏”退出。游戏中可以随时聊天，同一时间只能玩一个游戏，想换游戏要先结束当前这一局。机器人说话时不收音，说完再开口。
+
+- **你画我猜**：机器人在屏幕上画一种动物，你来猜。每局 5 题，每题 2 次机会。说“提示”要线索，不占机会；说“跳过”公布答案并直接画下一题；一题答完后说“下一题”继续。画一题要等几十秒，这段时间可以聊天。
+- **猜数字**：机器人想一个 1 到 20 的整数，你有五次机会，每次会告诉你大了还是小了，说“提示”可以知道是奇数还是偶数。
 
 ## 安装后第一次使用
 
-从应用广场安装并启动后，浏览器会自动打开设置页面（`http://127.0.0.1:8790/settings`）。应用用的是你自己的服务账号，需要填三样密钥，各栏分别填写：
+从应用广场安装并启动后，浏览器会自动打开设置页面 `http://127.0.0.1:8790/settings`。填好下面三样密钥并保存，应用就会自动继续启动：
 
 | 密钥 | 用途 | 填在哪一栏 |
 | --- | --- | --- |
 | 阿里云百炼（DashScope）的 API Key | 语音识别和语音合成 | 主 Agent |
 | 大模型的 API Key（OpenAI 兼容接口，默认 DeepSeek） | 聊天、选择游戏、主持游戏 | 主 Agent 和每个游戏 |
-| Typesafe 的 API Key | 你画我猜里判断答得对不对 | 你画我猜 |
+| Typesafe 的 API Key | 判断你画我猜答得对不对 | 你画我猜 |
 
-保存后应用自动继续启动，机器人说出开场白就可以对它说话了。密钥只保存在这台电脑上，这些服务按各自的账号计费。打开 `http://127.0.0.1:8790` 可以看到对话内容和它用了哪些工具。
+密钥只保存在本机，这些服务按各自的账号计费。打开 `http://127.0.0.1:8790` 可以看到对话内容和每轮用了哪些工具。
 
-已知问题：机器人固件每开关一次麦克风会少一点内存且不归还，连续玩一个多小时后机器人会听不到声音或者屏幕不再变化，给机器人断电重启就能恢复。目前只在 macOS 上验证过。
+> [!NOTE]
+> 机器人固件每开关一次麦克风都会少一点内存，连续玩一个多小时后，机器人会听不到声音或者屏幕不再变化，断电重启就能恢复。目前只在 macOS 上验证过。
 
-## 你画我猜
+## 本地开发
 
-对机器人说“我们来玩你画我猜”开始。
-
-- 每局 5 题，每题 2 次机会，答对得 1 分，同一局动物不重复
-- 最近 72 小时出现过的动物、同义名称和相同图案不会重复，满 72 小时后可以再次出题；重启程序后仍然保留有效历史
-- 答对时点头并显示开心表情，答错时摇头并显示抱歉表情；表情留到这句话说完，再回到原来的画面
-- 说“提示”要线索，每题 3 条，不占机会；第一次答错也会给一条
-- 答题结束后说“下一题”继续；答题期间说“跳过”或“下一题”，机器人公布答案并直接画下一题，跳过最后一题时整局结束；说“结束游戏”退出
-- 画图要等一会儿，这段时间可以随便聊天，聊天不算答题；和游戏有关的话等画完再说，想退出可以直接说“结束游戏”
-
-机器人说话时不收音，播报完成后恢复收音。
-
-## 猜数字
-
-机器人随机选择 1 到 20 的整数，玩家有五次回答机会。回答后会告知数字过大或过小；说“提示”可以获得奇偶信息。答对或机会用完后结束，也可以随时说“结束游戏”。
-
-## 运行
-
-需要 Python 3.11+、[uv](https://docs.astral.sh/uv/)，以及一台和电脑在同一局域网的机器人，固件支持 `expression.runtime.v3`、`expression.vector_accessory.v1`、`microphone`、`audio.stream`、`motion`。
+需要 Python 3.11+、[uv](https://docs.astral.sh/uv/)，以及一台和电脑在同一局域网的机器人。
 
 ```bash
 cp src/agentcade/.env.example src/agentcade/.env
 cp src/games/guess_animal/.env.example src/games/guess_animal/.env
 cp src/games/guess_number/.env.example src/games/guess_number/.env
-# 分别填写三个文件中的配置
+# 分别填写三个文件
 uv sync
-uv run watcherobot robot setup    # 仅首次连接设备
-uv run watcherobot app run .
+uv run watcherobot robot setup    # 仅首次连接机器人
+uv run watcherobot app run .      # Ctrl+C 或 uv run watcherobot app stop 停止
 ```
 
-按 Ctrl+C 或执行 `uv run watcherobot app stop` 停止。
-
-## 配置
-
-主 Agent 和每个游戏 Agent 各有一份配置，互相不共用：相同的变量名在不同 Agent 里互不影响，运行时也不会读取别的 Agent 的配置。读取时不修改进程环境，不读取根目录 `.env`，也不使用同名进程环境变量覆盖。配置值按字面读取，不展开 `${...}`。
-
-### 配置项的声明
-
-每个 Agent 读取哪些环境变量，写在它自己目录的 `settings.yaml` 里，主 Agent 和游戏 Agent 用同一种格式：
-
-```yaml
-options:
-  - key: TYPESAFE_API_KEY
-    label: Typesafe 的 API Key，用于判断用户答得对不对
-    secret: true
-  - key: JEV_MODEL
-    label: 判题模型
-    default: "jev-latest"
-    advanced: true
-```
-
-| 字段 | 含义 |
-| --- | --- |
-| `key` | 环境变量名，大写字母、数字和下划线 |
-| `label` | 设置页面上这一项显示的说明 |
-| `default` | 默认值，写成带引号的字符串；不写表示必填 |
-| `secret` | `true` 表示密钥，页面上不回显 |
-| `advanced` | `true` 表示一般不用改，页面上收在“更多设置”里 |
-
-这份文件是唯一的来源：设置页面的表单、读取时补默认值和检查必填项都按它来。文件里不能有重名的项和上表以外的字段，写错时应用启动会报错。
-
-代码里只需要一个配置类说明自己在哪个目录、怎样把读到的值转换成配置对象（`src/agentcade/config.py` 的 `AgentSettings`）：
-
-```python
-@dataclass(frozen=True)
-class Settings(AgentSettings):
-    DIRECTORY: ClassVar[Path] = Path(__file__).parent
-
-    llm: LLMSettings
-
-    @classmethod
-    def from_values(cls, values: dict[str, str]) -> "Settings":
-        return cls(llm=LLMSettings.from_values(values))
-```
-
-各目录里的 `.env.example` 由 `settings.yaml` 生成，改了之后运行 `uv run python scripts/write_env_examples.py`。
-
-### 配置保存在哪里
-
-配置从两个地方之一读取：
-
-- **本地开发**：Agent 目录里的 `.env`，存在时以它为准。
-- **安装后的应用**：源码目录里没有 `.env`，改为读取用户目录下的配置，由设置页面写入。位置是 `~/Library/Application Support/watcherobot/applications/<应用 ID>/config/`（Windows 为 `%LOCALAPPDATA%\watcherobot\applications\<应用 ID>\config\`），文件名与 Agent 目录对应，例如 `agentcade.env`、`games/guess_number.env`。这个目录在源码之外，升级和重装应用时不会丢。
-
-### 设置页面
-
-应用运行时打开 `http://127.0.0.1:8790/settings`，或在对话页面右上角点“设置”。配置还没有填好时，应用启动后会自动打开这个页面并等待，保存后自动继续启动，不用重新打开应用。
-
-- 表单按各 Agent 目录里的 `settings.yaml` 生成：主 Agent 一栏，`src/games/` 下每个游戏一栏，各存各的文件。页面不认识任何具体的配置项，新增游戏声明了自己的配置项就会多出一栏。
-- 每一栏下面写着它实际保存到哪个文件：源码目录里有 `.env` 时就是这个 `.env`，否则是用户目录下对应的文件。
-- 保存时只改动改过的那几项：文件里已有的项原地替换，没有的追加到末尾，值和默认值相同的不写；注释、空行和没有声明的项原样保留。什么都没改就保存，文件一个字节都不变。
-- 密钥不回显，留空保存表示沿用已经保存的那一个。新建的配置文件只允许当前用户读写，已有的文件保持原来的权限。
-- 应用已经在运行时，保存的内容要重新启动应用才生效。
-- 页面只接受它自己发出的请求，别的网站不能借浏览器修改这里的配置。
-
-| 配置文件 | 用途 |
-| --- | --- |
-| `src/agentcade/.env` | 主 Agent 的文字 LLM、工具调用、ASR、TTS、音色和游戏目录路径 |
-| `src/games/guess_animal/.env` | 你画我猜的游戏 Agent 与绘图模型、Jev、置信度和预计绘图时间 |
-| `src/games/guess_number/.env` | 猜数字的游戏 Agent 模型 |
-
-| 变量 | 用途 |
-| --- | --- |
-| `DASHSCOPE_API_KEY` | 主 Agent 的 Qwen ASR/TTS 接口凭据 |
-| `QWEN_ASR_MODEL` | 默认 `qwen-audio-3.1-asr-flash-streaming`，持续识别用户语音 |
-| `QWEN_TTS_MODEL` | 默认 `qwen-audio-3.1-tts-flash`，合成聊天和游戏播报 |
-| `QWEN_TTS_VOICE` | TTS 音色，默认 `yuxiaoyun_v3.1` |
-| `SPEECH_TIMEOUT_SECONDS` | 单次语音合成最长等待秒数，默认 90 |
-| `ASR_SILENCE_MS` | ASR 判定说话结束的静音时间，默认 800 毫秒 |
-| `ASR_INPUT_GAIN` | 麦克风 PCM 输入增益，默认 4，范围 1 至 8；通过 FFmpeg volume 处理，保持采样率和时间信息 |
-| `TYPESAFE_API_KEY` | 你画我猜的 JEV 答案判定凭据 |
-| `JEV_MODEL` / `JEV_CONFIDENCE_THRESHOLD` | 你画我猜的 JEV 模型与判定置信度，默认 `jev-latest` / `0.65` |
-| `LLM_API_KEY` | 当前配置文件所属 Agent 的 OpenAI 兼容接口凭据 |
-| `GAME_CATALOG` | 远程游戏的注册文件路径，默认项目中的 `games.json`；相对路径以应用目录为基准 |
-| `OBSERVABILITY_PORT` | 可观测性页面的本机端口，默认 8790；不能使用 SDK 守护进程占用的 8765 和 8767 |
-
-`DASHSCOPE_BASE_URL` 默认是百炼的公共地址；使用专属业务空间时改成对应的地址，换 key 时记得一起改。
-
-## 文字模型
-
-主 Agent 和游戏 Agent 各自在自己的配置里设置 `LLM_MODEL_NAME`、`LLM_BASE_URL`、`LLM_API_KEY` 和请求参数。全部 LLM 调用通过 OpenAI SDK 访问兼容 Chat Completions 的接口，使用原生 function calling 执行注册工具。主 Agent 的普通聊天回复直接交给 TTS。
-
-OpenAI 兼容接口在对应 Agent 的配置文件中填写，例如：
-
-```dotenv
-LLM_BASE_URL=https://api.deepseek.com
-LLM_API_KEY=填写你的密钥
-LLM_MODEL_NAME=deepseek-flash
-LLM_EXTRA_BODY_JSON={"thinking":{"type":"enabled"},"reasoning_effort":"low"}
-```
-
-更换服务时，将 `LLM_BASE_URL`、`LLM_API_KEY`、`LLM_MODEL_NAME` 改成目标服务的配置。这三项必须填写，接口需要支持 JSON 对象输出和 function calling。`LLM_EXTRA_BODY_JSON` 默认是 `{}`，用于填写所选服务支持的可选参数，如思考模式、输出长度或服务等级。它不能覆盖模型、消息、响应格式、流式模式或工具参数。`LLM_TIMEOUT_SECONDS` 控制单次调用超时，默认 180 秒。
-
-修改配置后重新启动应用。本地游戏的 A2A 等待时间为该游戏模型超时的三倍加 30 秒。远程游戏在 `games.json` 中单独配置 `timeout_seconds`，默认 210 秒。
-
-题目生成失败或超时会自动重试，最多三次，仍然失败时机器人会请用户再试一次。每次生成的 JSON 和去重记录存在 `.artifacts/`，重启后仍然有效。
-
-你画我猜的生成提示词要求模型优先选择常见动物，并使用常用、容易读写的名称和别名，避免名称中含有不常见的生僻字。
-
-## 对话与轨迹页面
-
-应用运行期间打开 `http://127.0.0.1:8790`，端口由 `OBSERVABILITY_PORT` 设置，服务只监听本机。端口上已有其他服务时应用启动失败并提示修改端口。页面顶部有两个标签，显示的是同一批实时事件：
-
-- **对话**：像聊天软件一样显示用户说的话和小懒的回复，游戏里说的话带游戏名称。小懒的回复跟着语音播报逐字出现，还没开始播的话显示为等待。每轮用到的工具收在名字和正文之间一个可以展开的步骤块里，进行中的步骤显示已经用了多久；点头摇头和表情、屏幕上画出的题目直接显示在对话里。底部的状态条显示小懒现在是在听、正在听到什么、在想还是在说，机器人说话和处理期间不收音，状态条显示“在听”时才可以开口。
-- **轨迹**：按轮次列出全部记录和时间线，用来排查耗时和出错的环节，点击任意一行在右侧查看完整输入和输出：
-
-| 记录 | 内容 |
-| --- | --- |
-| 用户 | ASR 的最终识别文字，每条开启一轮 |
-| 主 Agent · 回复 | 主 Agent 直接回复用户的聊天文字 |
-| 主 Agent · 工具、游戏 Agent · 工具 | 各自发起的工具调用，包含完整参数、返回或错误、耗时 |
-| A2A →、A2A ← | 主 Agent 发给游戏的 `GameInput`，以及游戏返回的每一条 `GameReply`：中间回复和最后一条回复 |
-| 设备执行 | 实际播报、绘图、表情、动作与完成状态，关联发起操作的游戏工具 |
-
-设备记录带有图案时，检查器显示对应笔画。A2A 回复展示面向用户的文字和本局是否结束，可与主 Agent 的播报原文核对。检查器底部列出关联的上级和下级记录，点击即可跳转。一次 A2A 请求及其游戏工具、设备执行均归入发起请求的那一轮。程序退出时自动发送的 `end` 显示在“轮次之间”。远程游戏的设备 trace 由游戏部署方记录。
-
-应用事件在内存中保留最近 2000 条。页面最多显示最近 3000 条记录，断线后保留已收到的记录并自动重连。事件包含对话内容，不包含密钥。
-
-每一轮的标题显示从用户说完到最后一条记录的耗时，时间线一列画出各条记录在这一轮中的起止位置：工具调用和 A2A 请求是时间段，其余记录是时间点。轨迹标签上方可以搜索记录、收起或展开全部轮次；收起后每轮显示用户原话和记录条数。上下方向键切换选中的记录。
-
-## 检查
+检查和真机测试：
 
 ```bash
 uv run ruff check app.py src scripts
 uv run watcherobot app check .
+uv run python scripts/e2e_robot.py   # 用电脑扬声器替用户说话，约 5 分钟
 ```
 
-真机端到端测试：
+运行端到端测试前，把机器人放在电脑扬声器旁边，并保持环境安静。测试会调用真实的语音和模型服务，结果保存在 `.artifacts/e2e/` 下。
 
-```bash
-uv run python scripts/e2e_robot.py
+## 配置
+
+主 Agent 和每个游戏各有一份配置，互不共用。每个 Agent 读取哪些配置项，声明在它自己目录的 `settings.yaml` 里，设置页面的表单、默认值和必填检查都按这份文件来：
+
+```yaml
+options:
+  - key: JEV_MODEL          # 环境变量名
+    label: 判题模型          # 设置页面上的说明
+    default: "jev-latest"   # 不写表示必填
+    secret: false           # true 表示密钥，页面上不回显
+    advanced: true          # true 表示收在“更多设置”里
 ```
 
-脚本启动应用，用电脑扬声器替用户说话，机器人收音并回应，再根据可观测性事件核对每一步：查询游戏、猜数字的开局、猜数、提示和结束、游戏中的闲聊，以及你画我猜的开局（先回复稍等、显示进度、画出题目）、提示、作答和结束。运行前连接机器人并放在电脑扬声器附近，保持环境安静；全程大约五分钟，会调用真实的语音和模型服务。合成的用户语音、应用日志、轨迹和报告保存在 `.artifacts/e2e/<时间>/`。
+配置的值从两个地方之一读取：
 
-除此之外没有其他自动化测试。`uv run watcherobot app run scripts/eye_preview` 可以在真机上逐个预览眼型，不调用模型。
+- **本地开发**：从 Agent 目录里的 `.env` 读取。
+- **安装后的应用**：从 `~/Library/Application Support/watcherobot/applications/<应用 ID>/config/` 读取，这里的文件由设置页面写入，升级或重装应用都不会丢。
+
+改了 `settings.yaml` 之后，运行 `uv run python scripts/write_env_examples.py`，重新生成各目录的 `.env.example`。大模型的接口要兼容 OpenAI，并且支持 JSON 输出和 function calling。改完配置要重启应用才生效。
+
+## 添加游戏
+
+在 `src/games/<game_id>/` 下新建一个目录，重启应用就会自动接入，不用改主 Agent。可以参考 `src/games/guess_number/` 这个完整示例。
+
+| 文件 | 内容 |
+| --- | --- |
+| `SKILL.md` | frontmatter 声明 `id`（和目录名一致）、`name`、`aliases`、`description`、`required_capabilities`；正文写规则和流程 |
+| `agent.py` | 入口类 `GameAgent`，继承 `SkillAgent`，实现下面几个方法 |
+| `settings.yaml` | 这个游戏读取的配置项 |
+| `config.py` | 配置类，继承 `AgentSettings`，需要包含 `llm: LLMSettings` |
+| `__init__.py` | 空文件 |
+
+`GameAgent` 要实现：
+
+| 成员 | 作用 |
+| --- | --- |
+| `skill`、`config` | 游戏声明（`Skill.load(...)`），以及配置类 |
+| `tools(turn)` | 返回游戏工具。`turn.text` 是用户原话，`await turn.say(text)` 立刻说一句话，`turn.end_session()` 结束本局 |
+| `state()` | 当前状态，每轮写进提示词，不能包含没揭晓的答案 |
+| `await self.react(expression, gesture)` | 判定对错时触发表情和动作，比如 `("happy", "nod")` |
+
+游戏用到新的 Python 依赖时，要同时加到 `pyproject.toml` 和 `app.json` 里。如果游戏独立部署在别的地方，在 `games.json` 里登记它的地址，例如 `[{"kind":"remote","id":"my_game","url":"https://example.com"}]`，并按下面的通信格式收发消息。
 
 ## 发布
 
 ```bash
-uv run publish            # 登录（没登录时）并发布源码，发布前会停下来确认
-uv run publish --submit   # 发布之后提交到官方名单审核
+uv run publish            # 发布源码到 Hugging Face（没登录时先登录），发布前会确认
+uv run publish --submit   # 发布后提交到官方名单审核
 ```
 
-默认发布到 Hugging Face，加 `--provider gitee` 发布到 Gitee。第一次运行会显示一个网址和验证码，在浏览器里完成授权后继续。源码发布到自己名下的公开仓库 `WatcherRobot-<应用 ID>`；提交审核后由官方人工合并，合并后应用才会出现在应用广场里。`.env`、`.watcherignore` 里列出的文件和 `scripts/` 不会发布。更新版本时先改 `app.json` 的 `version`。
+加上 `--provider gitee` 改为发布到 Gitee。源码会发布到你名下的公开仓库 `WatcherRobot-<应用 ID>`，官方审核合并后，应用才会出现在应用广场。`.env` 和 `.watcherignore` 里列出的文件不会发布。每次更新前先改 `app.json` 里的 `version`。
 
-## 实现
+## 架构
 
 ```mermaid
-flowchart TD
-    Mic[机器人麦克风 16 kHz PCM] --> ASR[Qwen ASR\n服务端判断说话结束]
-    ASR -->|用户原话| Main[主 Agent：聊天与工具调用\n内部包含 A2A Client]
-    Catalog[src/games/ 下的游戏目录和 Agent Card] --> Main
-    Main -->|A2A JSON-RPC| Animal[你画我猜 Agent]
-    Main -->|A2A JSON-RPC| Number[猜数字 Agent]
-    Main -->|A2A JSON-RPC| Extension[新增游戏 Agent]
-    Animal --> Drawing[绘图 LLM 与 Jev]
-    Animal --> Result[一条或多条面向用户的回复]
-    Number --> Result
-    Extension --> Result
-    Main --> Queue[聊天与游戏回复输出队列]
-    Queue --> Output[公共设备执行模块]
-    Animal --> Output
-    Number --> Output
-    Extension --> Output
-    Result --> Main
-    Output -->|聊天与游戏播报文本| Speech[Qwen TTS]
-    Speech --> Audio[SDK PCM 音频播放]
-    Output --> Device[屏幕、表情、头部动作]
+flowchart LR
+    Mic[麦克风] --> ASR[Qwen ASR] --> Main[主 Agent]
+    Main -->|A2A| Games[游戏 Agent<br/>SKILL.md + 工具]
+    Games -->|回复| Main
+    Main --> Output[输出队列]
+    Games -->|画图、表情、动作| Output
+    Output --> TTS[Qwen TTS] --> Speaker[机器人扬声器]
+    Output --> Screen[屏幕与动作]
 ```
 
-主 Agent 使用持续的 ASR WebSocket 会话识别麦克风语音，由 ASR 服务判定说话结束。主 Agent 根据原话、历史和当前游戏，直接回答，或者调用 `list_games`、`start_game`、`end_game`、`send_message`。每轮模型调用都会将当前已注册游戏的名称、ID、别名和介绍按目录顺序写入系统提示词，新增游戏目录后自动使用。普通聊天由主 Agent 直接回复，游戏介绍和播报使用简短的日常口语。
+- **主 Agent**（`src/agentcade/main_agent.py`）根据用户原话，要么直接聊天回答，要么调用 `list_games`、`start_game`、`end_game`、`send_message` 这四个工具。游戏列表在启动时从 `src/games/` 自动发现。
+- **游戏 Agent**（`src/agentcade/skill_agent.py`）是由 `SKILL.md` 驱动的 ReAct Agent。规则、状态、判定和设备操作都在游戏内部，主 Agent 只知道当前在玩哪个游戏。
+- **通信格式 `desktop-game/5`**（`src/agentcade/protocol.py`）：主 Agent 发一条用户输入，游戏回复一条或多条要播报的话。消息放在 A2A DataPart 里；Agent Card 要声明 `streaming=true`，skill 的标签包含 `desktop-game/5`。
 
-主 Agent 通过 A2A 给游戏 Agent 发一条消息，游戏 Agent 把它当作用户输入，回复一条或多条要播报的话，主 Agent 原样交给 TTS。第一条回复播完后恢复收音，其余回复到达时继续播报。游戏还在处理上一条输入时，新的游戏输入不会转发，主 Agent 会请用户稍等。消息格式见 [通信设计](docs/main-agent-game-a2a-design.md)。
+  | 方向 | 内容 | A2A 载体 |
+  | --- | --- | --- |
+  | 主 → 游戏 | `{"kind": "start\|message\|end", "text": 用户原话}` | 流式 `SendMessage`，`context_id` 标识一局游戏 |
+  | 游戏 → 主 | `{"text": 要播报的话, "session": "active\|ended"}` | 中间回复的状态是 `working`，最后一条是 `completed` |
 
-游戏 Agent 是由 `SKILL.md` 驱动的 ReAct Agent。`SKILL.md` 写明规则和整体流程，模型按流程连续调用游戏自己的工具：规则工具返回题目、提示、答案判定和计分等事实，展示画面的工具直接操作屏幕。答对答错时的表情和动作不经过模型，由规则工具在判定时直接触发。耗时操作之前，模型用 `say` 先说一句话。聊天期间游戏状态保持不变，等待用户输入期间没有计时提醒、机会扣除或自动结束。
-
-本地游戏通过官方 `a2a-sdk` 启动仅监听 `127.0.0.1` 的 HTTP 服务，并通过 Agent Card 发现。`context_id` 标识一局游戏，同一局的请求逐条处理；`end` 会取消正在处理的请求。主 Agent 收到本局结束的回复后清除当前会话。
-
-- **图案**：模型输出动物名、别名、3 条提示和笔画坐标，经 Pydantic 校验后用 SDK 的矢量配件逐笔显示。设备上限是 12 条笔画、192 个点。重名、提示里带答案、笔画和以前完全相同的结果都会被拒绝。
-- **表情**：`src/agentcade/assets/emojis/` 里的三个 SVG 转成白色矢量笔画，分别用于生成中、答对、答错。生成中的进度条分成十格，按 `DRAWING_ESTIMATE_SECONDS` 估算，每经过预计时间的十分之一增加一格，等待结果时最多显示九格。生成完成后显示满格，再绘制动物。每次进度变化使用 `expression_runtime.start()` 提交完整图案和显示参数，一次生成最多提交 11 个进度画面。`ProgressDisplay` 管理计时和任务标识，显示命令串行执行，退出后旧进度请求失效。
-- **语音**：接收 TTS 返回的 24 kHz、单声道、16-bit PCM，完整响应收齐后通过 SDK `audio.play_pcm()` 播放。所有播报排队，互不打断；取消时停止设备播放。当前采用半双工交互，输入处理和播报流程分别登记麦克风暂停请求，全部释放后才恢复收音。暂停期间向 ASR 发送静音，涉及暂停音频的识别结果会被忽略。
-- **设备连接**：`DeviceContext` 等待 `sys.sdk.ready.get` 确认与 `evt.sdk.ready` 能力信息后完成启动。麦克风收到第一段 PCM 后才标记为可以收音；连续 10 秒没有 PCM、设备指令超时或会话被关闭时，重新打开麦克风继续收音，日志包含会话 ID、最后序号、接收字节数和解码状态。音频发送任务串行执行，取消会结束该任务内部的流控等待。
-- **出错**：启动阶段的问题直接退出并打印错误，包括配置缺失、机器人未连接或缺少能力、端口被占用、游戏加载失败，以及第一次连接识别服务失败。运行起来之后，单次故障只影响当时的那一步，程序继续运行：
-
-  | 故障 | 处理 |
-  | --- | --- |
-  | 麦克风停流、设备指令超时、会话被关闭 | 重新打开麦克风，间隔 1 至 5 秒，直到恢复 |
-  | 断线后设备上留着没结束的播放或麦克风会话，打开麦克风被拒绝（busy） | 让设备停止播放，关闭残留的麦克风会话，然后重新打开 |
-  | 识别服务断开或超时 | 重新连接，间隔 1 至 10 秒，直到恢复 |
-  | 语音合成失败 | 重试两次，仍然失败则跳过这一条播报 |
-  | 播放、屏幕或动作失败 | 跳过这一条输出；游戏工具把失败告诉模型，由它重试或向用户说明 |
-  | 主 Agent 的模型出错 | 请用户再说一遍 |
-  | 游戏请求失败 | 提示用户；开局和结束失败时清除这一局，局内输入失败时保留 |
-  | 游戏 Agent 的模型出错 | 回复一句兜底的话；开局失败时结束这一局 |
-  | 模型接口连接失败、限流或服务端错误 | 自动重试两次 |
-  | 答案判定（JEV）连接失败、超时、限流或服务端错误 | 自动重试两次，连同等待最多 30 秒 |
-  | 工具参数不合法或执行失败 | 错误交还给模型，由它重试或向用户说明 |
-
-  故障写入应用日志。运行中仍然会退出的情况：应用与机器人守护进程的通道断开，以及麦克风音频格式不符。
-
-| 文件 | 职责 |
-| --- | --- |
-| `app.py` | SDK 入口 |
-| `src/agentcade/device.py` | 设备启动确认、音频发送顺序与设备状态记录 |
-| `src/agentcade/application.py` | 收音、主 Agent 与输出队列的运行周期 |
-| `src/agentcade/speech_input.py` | 持续 ASR 输入、语音增益和识别结果路由 |
-| `src/agentcade/tools.py` | 工具注册、JSON Schema、参数校验和执行记录 |
-| `src/agentcade/protocol.py` | 主 Agent 与游戏 Agent 的统一通信格式、游戏声明和设备输出 schema |
-| `src/agentcade/main_agent.py` | 主 Agent 决策、聊天历史、单游戏限制和游戏回复的播报 |
-| `src/agentcade/game_client.py` | 主 Agent 一侧：发现游戏目录、Agent Card 校验和 A2A 回复流 |
-| `src/agentcade/game_server.py` | 游戏一侧：本地 A2A 服务、会话与请求的顺序和取消 |
-| `src/agentcade/task_store.py` | 已完成 A2A Task 的保留数量 |
-| `src/agentcade/skill.py` | `SKILL.md` 的读取与校验 |
-| `src/agentcade/skill_agent.py` | 所有游戏共用的 ReAct 运行时、`say` 和公共设备工具 |
-| `src/agentcade/output.py` | 统一播报、屏幕、表情、动作与麦克风管理 |
-| `src/games/<game_id>/SKILL.md` | 游戏声明、规则和流程 |
-| `src/games/<game_id>/agent.py` | 游戏入口 `GameAgent`：状态和工具 |
-| `src/games/<game_id>/config.py` | 游戏独立配置读取与检查 |
-| `games.json` | 远程游戏的注册文件，本地游戏不需要登记 |
-| `src/games/guess_animal/game.py` | 出题、计分、提示 |
-| `src/games/guess_animal/generator.py` | 提示词、输出校验、去重历史 |
-| `src/games/guess_animal/animals.py` | 动物数据结构 |
-| `src/games/guess_animal/judge.py` | Jev 动物答案判定 |
-| `src/agentcade/providers.py` | OpenAI 兼容接口的结构化输出和工具调用 |
-| `src/agentcade/vector.py` | 公共笔画结构和矢量编码 |
-| `src/agentcade/expressions.py` | 表情 SVG 转换和进度条 |
-| `src/agentcade/eyes.py` | 待机眼睛和眼型预览参数 |
-| `src/agentcade/speech.py` | ASR/TTS WebSocket 协议、语音合成和识别时间关联 |
-| `src/agentcade/audio_stream.py` | SDK PCM 播放、完成确认和取消处理 |
-| `src/agentcade/microphone.py` | 麦克风收音和播报时静音 |
-| `src/agentcade/config.py` | 读取各 Agent 的 `settings.yaml` 和配置值（`AgentSettings`）、主 Agent 的配置和检查 |
-| `src/agentcade/settings.yaml`、`src/games/<game_id>/settings.yaml` | 各 Agent 读取的配置项声明 |
-| `src/agentcade/settings_page.py` | 设置页面的后端：按各 Agent 的 `settings.yaml` 生成表单、保存配置、启动时等配置填好 |
-| `src/agentcade/assets/emojis/` | 公共表情 SVG |
-| `src/observability/events.py` | 事件总线、轮次与上下级关联、工具调用和 A2A 通信的记录入口 |
-| `src/observability/server.py` | 本机 HTTP 服务与 SSE 事件流，支持按事件 ID 续传，并推送“正在听到的话”这类只看当前值的状态 |
-| `src/observability/web/settings.html` | 设置页面：填写各 Agent 的服务配置 |
-| `src/observability/web/index.html` | 对话与轨迹页面：聊天样式的对话视图，按轮次分组的记录表与检查器 |
-| `scripts/` | 真机端到端测试、眼型预览工具、生成 `.env.example` 的脚本 |
-
-## 添加游戏
-
-每个游戏位于 `src/games/<game_id>/`，目录包含 `__init__.py`、`SKILL.md`、入口文件 `agent.py`、声明配置项的 `settings.yaml` 和读取它的 `config.py`。游戏专用模块放在对应游戏目录内；公共语音、模型和显示能力位于 `src/agentcade/`。
-
-`SKILL.md` 的 frontmatter 声明游戏，正文写规则和流程，启动时整体写入游戏 Agent 的系统提示词：
-
-```markdown
----
-id: guess_number
-name: 猜数字
-aliases: [数字游戏, 猜数]
-description: 我会选一个1到20的整数，你来猜，最多有五次机会。
-required_capabilities: [motion]
----
-
-## 规则
-
-……
-
-## 流程
-
-### 开局（event 为 start）
-
-调用 start_game，然后告诉用户数字范围和机会数，请他开始猜。
-```
-
-`agent.py` 的入口类是 `GameAgent`，继承 `agentcade.skill_agent.SkillAgent`：
-
-- `skill = Skill.load(Path(__file__).with_name("SKILL.md"))` 读取游戏声明和流程。
-- `config = Settings` 指向本游戏的配置类。本游戏读取的环境变量按上面“配置项的声明”写在 `settings.yaml` 里，配置对象需要包含 `llm: LLMSettings`，其他配置由游戏自行定义。设置页面和启动时的读取都以这份声明为准。
-- `__init__(settings, device)` 调用父类构造函数，创建游戏状态。`device` 是异步设备执行函数，`await device(Presentation(...))` 执行图案、表情和动作。
-- `tools(turn)` 返回本游戏的工具。`turn.text` 是用户原话，`await turn.say(text)` 立刻回复一句话，`turn.end_session()` 标记本局结束。
-- `await self.react(expression, gesture)` 在规则工具判定出对错时调用，例如 `await self.react("happy", "nod")`。表情和动作立刻开始，不等动作做完；表情留到接下来这句话说完，屏幕再自动恢复成原来的图案或待机画面。本局结束后屏幕也会在最后一句话说完后自动回到待机画面，这两件事都不需要模型调用工具。
-- `state()` 返回当前状态快照，每轮写入系统提示词，不能包含未揭晓的答案。
-- `close()` 释放游戏资源，需要时覆盖并调用父类实现。
-
-工具返回可以转成 JSON 的事实，例如判定结果、提示和剩余次数，由模型组织成回复。无法执行的操作返回带 `outcome` 的结果，模型据此向用户说明。
-
-目录放好后重新启动应用就会接入，不需要登记，也不需要改主 Agent。启动时 `src/games/` 下每个同时带有 `SKILL.md` 和 `agent.py` 的子目录都会被当作一个游戏，目录名要和 `SKILL.md` 里的 `id` 一致，游戏按目录名排序。
-
-`src/games/guess_number/` 是完整示例。增加使用现有语音、屏幕和动作能力的游戏，只需要新增游戏目录，主 Agent 的提示词、选择逻辑、开场白和输出处理自动使用游戏声明。游戏用到新的 Python 依赖时，还要加进 `pyproject.toml` 和 `app.json`。
-
-独立部署的游戏在 `games.json` 里登记，例如 `[{"kind":"remote","id":"my_game","url":"https://example.com"}]`。服务提供 A2A Agent Card、流式 JSON-RPC 接口，以及标记 `desktop-game/5` 的 skill，并按 [通信设计](docs/main-agent-game-a2a-design.md) 收发消息。部署方通过 `serve_game(factory, settings, device)` 注入真实设备执行函数。设备能力通过 `capability:motion` 等 tag 声明，认证由部署环境提供。
+- **运行时容错**：麦克风、识别服务、语音合成、模型调用出现单次故障时，会自动重试或跳过这一步，程序继续运行。只有启动阶段的问题（配置缺失、机器人未连接、端口被占用）会直接退出。
+- **对话页面**（`src/observability/`）：本机 `8790` 端口提供“对话”和“轨迹”两个视图，实时显示每一轮的识别结果、工具调用、A2A 消息和设备输出。
 
 ## License
 
-MIT
+[MIT](LICENSE)
