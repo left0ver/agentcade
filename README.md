@@ -11,7 +11,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="MIT License"></a>
 </p>
 
-桌面机器人“小懒”：用语音和它聊天、玩小游戏。主 Agent 负责聊天和选择游戏，每个游戏是一个独立的 Agent，通过 A2A 通信。现在有“你画我猜”和“猜数字”，往 `src/games/` 里放一个目录就能加一个新游戏。
+桌面机器人“小懒”：用语音和它聊天、玩小游戏。主 Agent 负责聊天和选择游戏，每个游戏是一个独立的 Agent，通过 A2A 通信。现在有“你画我猜”、“猜数字”和“海龟汤”，往 `src/games/` 里放一个目录就能加一个新游戏。
 
 ## 怎么玩
 
@@ -19,6 +19,7 @@
 
 - **你画我猜**：机器人在屏幕上画一种动物，你来猜。每局 5 题，每题 2 次机会。说“提示”要线索，不占机会；说“跳过”公布答案并直接画下一题；一题答完后说“下一题”继续。画一题要等几十秒，这段时间可以聊天。
 - **猜数字**：机器人想一个 1 到 20 的整数，你有五次机会，每次会告诉你大了还是小了，说“提示”可以知道是奇数还是偶数。
+- **海龟汤**：机器人讲一个离奇的小故事，你只能问“是不是”的问题，机器人点头、摇头或者说无关，帮你一步步推理出真相。想明白了就把推理说出来；说“提示”要线索，说“公布答案”放弃这一道，说“再来一道”换题。
 
 ## 安装后第一次使用
 
@@ -28,7 +29,7 @@
 | --- | --- | --- |
 | 阿里云百炼（DashScope）的 API Key | 语音识别和语音合成 | 主 Agent |
 | 大模型的 API Key（OpenAI 兼容接口，默认 DeepSeek） | 聊天、选择游戏、主持游戏 | 主 Agent 和每个游戏 |
-| Typesafe 的 API Key | 判断你画我猜答得对不对 | 你画我猜 |
+| Typesafe 的 API Key | 判断你画我猜答得对不对、按海龟汤的汤底回答提问 | 你画我猜和海龟汤 |
 
 密钥只保存在本机，这些服务按各自的账号计费。打开 `http://127.0.0.1:8790` 可以看到对话内容和每轮用了哪些工具。
 
@@ -43,7 +44,8 @@
 cp src/agentcade/.env.example src/agentcade/.env
 cp src/games/guess_animal/.env.example src/games/guess_animal/.env
 cp src/games/guess_number/.env.example src/games/guess_number/.env
-# 分别填写三个文件
+cp src/games/turtle_soup/.env.example src/games/turtle_soup/.env
+# 分别填写这几个文件
 uv sync
 uv run watcherobot robot setup    # 仅首次连接机器人
 uv run watcherobot app run .      # Ctrl+C 或 uv run watcherobot app stop 停止
