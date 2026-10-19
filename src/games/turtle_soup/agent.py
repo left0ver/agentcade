@@ -3,7 +3,7 @@ import logging
 import time
 from pathlib import Path
 
-from agentcade.protocol import Presentation
+from agentcade.protocol import Gesture
 from agentcade.skill import Skill
 from agentcade.skill_agent import SkillAgent
 from agentcade.tools import NoInput, Tool, original_text_input
@@ -39,8 +39,8 @@ class GameAgent(SkillAgent):
     skill = Skill.load(Path(__file__).with_name("SKILL.md"))
     config = Settings
 
-    def __init__(self, settings, device):
-        super().__init__(settings, device)
+    def __init__(self, settings):
+        super().__init__(settings)
         self.judge = JevJudge(settings)
         self.generator = PuzzleGenerator(settings)
         self.library = Library()
@@ -155,7 +155,7 @@ class GameAgent(SkillAgent):
             judged = True
             self.questions += 1
             if answer in GESTURES:
-                await self.gesture(GESTURES[answer])
+                await self.act(Gesture(name=GESTURES[answer]))
             return {"answer": answer, **self.state()}
 
         async def submit_solution(text):
@@ -172,7 +172,7 @@ class GameAgent(SkillAgent):
                 await self.react("happy", "nod")
                 return {"verdict": verdict, **self.reveal("solved")}
             if verdict == "wrong":
-                await self.gesture("shake_head")
+                await self.act(Gesture(name="shake_head"))
             return {"verdict": verdict, **self.state()}
 
         async def get_hint():
@@ -223,13 +223,6 @@ class GameAgent(SkillAgent):
                  NoInput, next_puzzle),
             Tool("end_game", "结束游戏，返回猜中的题数和没猜完那道题的汤底。", NoInput, end_game),
         ]
-
-    async def gesture(self, name):
-        try:
-            await self.device(Presentation(gesture=name))
-        except Exception:
-            # 动作只是点缀，设备出错不影响判断结果和回复。
-            logger.warning("动作 %s 没有执行", name, exc_info=True)
 
     async def close(self):
         try:

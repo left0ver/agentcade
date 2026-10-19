@@ -457,12 +457,25 @@ function resultText(result) {
   return parts.length ? parts.join(" · ") : short(JSON.stringify(result));
 }
 
+// 游戏回复里的设备指令，按顺序写成简短的中文。
+function directivesText(directives) {
+  return (directives || []).map((directive) => ({
+    gesture: { nod: "点头", shake_head: "摇头" }[directive.name],
+    expression: { happy: "开心", sorry: "抱歉" }[directive.name],
+    draw: `画图 ${directive.paths?.length ?? 0} 步`,
+    progress: `显示进度 ${directive.seconds} 秒`,
+    clear: "恢复待机",
+  }[directive.type] || directive.type)).join("、");
+}
+
 function exchangeText(data) {
   if (data.cancelled) return [["已取消", "dim"]];
   if (data.error) return [["失败 · ", "err"], [data.error, "err"]];
   const result = data.result || {};
   const parts = [data.final ? "最后一条" : "中间回复"];
   if (result.session === "ended") parts.push("本局结束");
+  const actions = directivesText(result.directives);
+  if (actions) parts.push(actions);
   return [[parts.join(" · "), "dim"], [result.text ? ` · ${result.text}` : "", ""]];
 }
 
@@ -1281,8 +1294,9 @@ function inspect(row) {
   }
   if (row.kind === "a2a-out") sections.push(section("请求", jsonBlock(data.request)));
   if (row.kind === "a2a-in" && data.result) {
-    sections.push(section("回复文字", el("div", "block text", data.result.text)),
-      section("会话", el("div", "block text", data.result.session === "ended" ? "本局结束" : "继续")));
+    if (data.result.text) sections.push(section("回复文字", el("div", "block text", data.result.text)));
+    if (data.result.directives?.length) sections.push(section("设备指令", jsonBlock(data.result.directives)));
+    sections.push(section("会话", el("div", "block text", data.result.session === "ended" ? "本局结束" : "继续")));
   }
   if (row.kind === "device") {
     sections.push(section("设备操作", jsonBlock(data.output)));

@@ -47,10 +47,11 @@ class GameConnection:
     async def send(
         self, context_id: str, request: GameInput, *,
         on_reply: Callable[[GameReply], Awaitable[None]] | None = None,
+        request_id: str | None = None,
     ) -> GameReply:
         """发送一条输入。中间回复逐条交给 on_reply，返回这次请求的最后一条回复。"""
         message = Message(
-            message_id=uuid4().hex, context_id=context_id, role=Role.ROLE_USER,
+            message_id=request_id or uuid4().hex, context_id=context_id, role=Role.ROLE_USER,
             parts=[to_part(request)],
         )
         final = None
@@ -75,6 +76,8 @@ class GameConnection:
                     continue
                 reply = from_parts(GameReply, update.status.message.parts)
                 if state == TaskState.TASK_STATE_COMPLETED:
+                    if not reply.text:
+                        raise ValueError("最后一条回复必须有要播报的话")
                     final = reply
                     continue
                 if reply.session != "active":
@@ -98,7 +101,7 @@ def discover(directory: Path) -> list[LocalGame]:
 
 
 @asynccontextmanager
-async def connect_games(path: Path, device, directory: Path = SOURCE / "games"):
+async def connect_games(path: Path, directory: Path = SOURCE / "games"):
     # 本地游戏放进游戏目录就会被发现；注册文件只用来接入远程游戏或目录以外的游戏。
     entries = discover(directory)
     if path.is_file():
@@ -117,7 +120,7 @@ async def connect_games(path: Path, device, directory: Path = SOURCE / "games"):
                     raise ValueError(f"游戏目录名或注册 ID 与 SKILL.md 声明的 ID 不一致：{entry.id}")
                 settings = factory.config.from_environment()
                 timeout = settings.llm.timeout_seconds * 3 + 30
-                url = await resources.enter_async_context(serve_game(factory, settings, device))
+                url = await resources.enter_async_context(serve_game(factory, settings))
                 # 本地请求完成后关闭连接，避免复用正被服务端空闲超时关闭的连接。
                 limits = httpx.Limits(max_keepalive_connections=0)
             else:

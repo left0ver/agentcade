@@ -61,9 +61,11 @@ class Turn:
                    for event in self.select("a2a.result")}
         return [
             {**event["payload"], **results.get(event["payload"]["request_id"], {}),
+             # 只有设备指令的中间回复没有要播报的话，不计入。
              "updates": [update["payload"]["result"]["text"]
                          for update in self.select("a2a.update")
-                         if update["payload"]["request_id"] == event["payload"]["request_id"]]}
+                         if update["payload"]["request_id"] == event["payload"]["request_id"]
+                         and update["payload"]["result"]["text"]]}
             for event in self.select("a2a.request")
         ]
 

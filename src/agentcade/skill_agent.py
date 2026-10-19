@@ -5,7 +5,7 @@ from typing import Literal
 
 from pydantic import Field
 
-from agentcade.protocol import GameInput, GameReply, Presentation
+from agentcade.protocol import Clear, Directive, Expression, GameInput, GameReply, Gesture
 from agentcade.providers import OpenAIProvider
 from agentcade.skill import Skill
 from agentcade.tools import Tool, ToolInput, ToolRegistry
@@ -13,17 +13,16 @@ from agentcade.tools import Tool, ToolInput, ToolRegistry
 logger = logging.getLogger(__name__)
 
 Emit = Callable[[GameReply], Awaitable[None]]
-Device = Callable[[Presentation], Awaitable[None]]
 
 AGENT_PROMPT = """你是桌面机器人上的游戏 Agent，按照“游戏说明”主持一局游戏，自主决定调用哪些工具、怎样回应。
-每条用户消息是一个 JSON：event 为 start 表示开局，message 表示局内输入，end 表示用户要求结束；user_text 是用户原话。
+每条用户消息是一个 JSON：event 为 start 表示开局，message 表示局内输入，end 表示结束（reason 为 user 是用户要求结束，shutdown 是程序退出）；user_text 是用户原话。
 处理完成后必须给出最终文本，它会原样语音播报给用户，通常一至三句、120字以内，不使用 Markdown。
 使用简短、自然的口语，像一起玩游戏时聊天，不刻意卖萌。
 直接说用户需要知道的事情，不提工具、协议、会话、参数或内部状态字段，也不汇报内部操作。
 可以连续调用多个工具，观察结果后继续判断；解释、鼓励、回应情绪和请求澄清可以直接回复。
 需要在处理中途先说一句话时调用 say，例如耗时操作之前请用户稍等；最终文本不要重复 say 说过的内容。
 游戏状态、次数和得分以工具结果和“当前状态”为准，不要自行猜测或重复计分。
-展示画面的工具直接操作屏幕，device_completed=true 表示执行完成。
+展示画面的工具让机器人按顺序显示，画面显示完才会播报你接下来说的话。
 答对答错时的表情和动作、整局结束后恢复画面都由系统自动完成，你只负责说话，不要在回复里描述动作。
 工具结果带有 error 表示这次操作没有成功：可以重试一次，仍然失败就向用户简单说明，不要当作已经完成。
 答案和提示只能来自工具结果；工具没有给出答案时，不要说出、暗示或猜测答案。
@@ -56,6 +55,10 @@ class Turn:
         await self.emit(GameReply(text=text))
         self.spoken = True
 
+    async def act(self, *directives: Directive) -> None:
+        """立刻发出设备指令，由主 Agent 按顺序交给机器人执行；不等执行完成。"""
+        await self.emit(GameReply(directives=list(directives)))
+
     def end_session(self) -> None:
         self.ended = True
 
@@ -66,10 +69,10 @@ class SkillAgent:
     skill: Skill
     memory_turns = 16
 
-    def __init__(self, settings, device: Device):
-        self.device = device
+    def __init__(self, settings):
         self.provider = OpenAIProvider(settings.llm)
         self.memory: list[list[dict]] = []
+        self.turn: Turn | None = None
 
     def tools(self, turn: Turn) -> list[Tool]:
         raise NotImplementedError
@@ -77,23 +80,21 @@ class SkillAgent:
     def state(self) -> dict:
         return {}
 
+    async def act(self, *directives: Directive) -> None:
+        """在当前这一轮里发出设备指令，例如画图、显示进度、点头。"""
+        if self.turn is None:
+            raise RuntimeError("设备指令只能在处理请求期间发出")
+        await self.turn.act(*directives)
+
     async def react(self, expression: Literal["happy", "sorry"],
                     gesture: Literal["nod", "shake_head"]) -> None:
         """对用户刚才的回答做出表情和动作。立刻开始，不等动作做完；表情留到接下来这句话说完。"""
-        try:
-            await self.device(Presentation(expression=expression, gesture=gesture))
-        except Exception:
-            # 反应只是点缀，设备出错不影响判定结果和回复。
-            logger.warning("表情和动作没有执行", exc_info=True)
+        await self.act(Expression(name=expression), Gesture(name=gesture))
 
     async def conclude(self, turn: Turn, text: str) -> GameReply:
-        if turn.ended:
-            try:
-                # 本局结束后屏幕回到待机画面，由输出模块等这句话说完再换。
-                await self.device(Presentation(clear=True))
-            except Exception:
-                logger.warning("结束时没有恢复待机画面", exc_info=True)
-        return GameReply(text=text, session="ended" if turn.ended else "active")
+        # 本局结束后屏幕回到待机画面，输出模块等这句话说完再换。
+        return GameReply(text=text, directives=[Clear()] if turn.ended else [],
+                         session="ended" if turn.ended else "active")
 
     def system_prompt(self) -> str:
         return (
@@ -102,7 +103,13 @@ class SkillAgent:
         )
 
     async def handle(self, request: GameInput, emit: Emit) -> GameReply:
-        turn = Turn(request, emit)
+        turn = self.turn = Turn(request, emit)
+        try:
+            return await self.respond(request, turn)
+        finally:
+            self.turn = None
+
+    async def respond(self, request: GameInput, turn: Turn) -> GameReply:
 
         async def say(text):
             await turn.say(text)
@@ -117,9 +124,10 @@ class SkillAgent:
             *(message for past in self.memory for message in past),
         ]
         current = len(messages)
-        messages.append({"role": "user", "content": json.dumps(
-            {"event": request.kind, "user_text": request.text}, ensure_ascii=False,
-        )})
+        event = {"event": request.kind, "user_text": request.text}
+        if request.reason:
+            event["reason"] = request.reason
+        messages.append({"role": "user", "content": json.dumps(event, ensure_ascii=False)})
         try:
             text = (await self.provider.run_tools(messages, registry)).strip()[:500]
             if not text:

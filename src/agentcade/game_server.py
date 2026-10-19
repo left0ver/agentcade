@@ -30,8 +30,8 @@ logger = logging.getLogger(__name__)
 
 
 class GameExecutor(AgentExecutor):
-    def __init__(self, factory, settings, device):
-        self.factory, self.settings, self.device = factory, settings, device
+    def __init__(self, factory, settings):
+        self.factory, self.settings = factory, settings
         self.agent = None
         self.context_id = None
         self.lock = asyncio.Lock()
@@ -60,7 +60,7 @@ class GameExecutor(AgentExecutor):
             if request.kind == "start":
                 # 上一局没有正常结束时（例如请求中途失败），新的一局直接替换它。
                 await self.release()
-                self.agent = self.factory(self.settings, self.device)
+                self.agent = self.factory(self.settings)
                 self.context_id = context.context_id
             if self.agent is None or self.context_id != context.context_id:
                 # 这一局已经不存在，回复本局结束，主 Agent 据此清除自己的会话。
@@ -130,7 +130,7 @@ class GameEventSourceResponse(EventSourceResponse):
 
 
 @asynccontextmanager
-async def serve_game(factory, settings, device, *, task_history_limit=64):
+async def serve_game(factory, settings, *, task_history_limit=64):
     descriptor = factory.skill.descriptor
     listener = socket.socket()
     listener.bind(("127.0.0.1", 0))
@@ -149,7 +149,7 @@ async def serve_game(factory, settings, device, *, task_history_limit=64):
             protocol_binding="JSONRPC", protocol_version="1.0", url=url + "/a2a",
         )],
     )
-    executor = GameExecutor(factory, settings, device)
+    executor = GameExecutor(factory, settings)
     handler = DefaultRequestHandler(
         agent_executor=executor, task_store=GameTaskStore(max_completed=task_history_limit),
         agent_card=card,

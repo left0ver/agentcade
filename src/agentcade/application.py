@@ -89,5 +89,5 @@ async def run_application(app):
             return
         microphone = MicrophoneInput(app.robot)
         output = OutputCoordinator(app, settings, microphone)
-        async with connect_games(settings.game_catalog, output.execute) as games:
+        async with connect_games(settings.game_catalog) as games:
             await RobotApplication(app, settings, games, microphone, output).run()

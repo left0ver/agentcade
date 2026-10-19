@@ -6,7 +6,7 @@
   <a href="https://huggingface.co/spaces/left0ver/WatcherRobot-com.left0ver.agentcade"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Space-FFD21E" alt="Hugging Face Space"></a>
   <img src="https://img.shields.io/badge/python-%E2%89%A53.11-3776AB?logo=python&logoColor=white" alt="Python 3.11+">
   <img src="https://img.shields.io/badge/WatcheRobot%20SDK-%E2%89%A50.1.10-6E56CF" alt="WatcheRobot SDK 0.1.10+">
-  <img src="https://img.shields.io/badge/A2A-desktop--game%2F5-0C8585" alt="A2A desktop-game/5">
+  <img src="https://img.shields.io/badge/A2A-desktop--game%2F6-0C8585" alt="A2A desktop-game/6">
   <img src="https://img.shields.io/badge/platform-macOS-lightgrey?logo=apple" alt="macOS">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="MIT License"></a>
 </p>
@@ -101,6 +101,7 @@ options:
 | `tools(turn)` | 返回游戏工具。`turn.text` 是用户原话，`await turn.say(text)` 立刻说一句话，`turn.end_session()` 结束本局 |
 | `state()` | 当前状态，每轮写进提示词，不能包含没揭晓的答案 |
 | `await self.react(expression, gesture)` | 判定对错时触发表情和动作，比如 `("happy", "nod")` |
+| `await self.act(*directives)` | 发出设备指令，比如 `Draw(paths=...)` 画图、`Progress(seconds=30)` 显示进度、`Gesture(name="nod")` 点头。指令随回复交给主 Agent，按顺序执行，不等执行完成 |
 
 游戏用到新的 Python 依赖时，要同时加到 `pyproject.toml` 和 `app.json` 里。如果游戏独立部署在别的地方，在 `games.json` 里登记它的地址，例如 `[{"kind":"remote","id":"my_game","url":"https://example.com"}]`，并按下面的通信格式收发消息。
 
@@ -119,21 +120,30 @@ uv run publish --submit   # 发布后提交到官方名单审核
 flowchart LR
     Mic[麦克风] --> ASR[Qwen ASR] --> Main[主 Agent]
     Main -->|A2A| Games[游戏 Agent<br/>SKILL.md + 工具]
-    Games -->|回复| Main
+    Games -->|回复与设备指令| Main
     Main --> Output[输出队列]
-    Games -->|画图、表情、动作| Output
     Output --> TTS[Qwen TTS] --> Speaker[机器人扬声器]
     Output --> Screen[屏幕与动作]
 ```
 
 - **主 Agent**（`src/agentcade/main_agent.py`）根据用户原话，要么直接聊天回答，要么调用 `list_games`、`start_game`、`end_game`、`send_message` 这四个工具。游戏列表在启动时从 `src/games/` 自动发现。
-- **游戏 Agent**（`src/agentcade/skill_agent.py`）是由 `SKILL.md` 驱动的 ReAct Agent。规则、状态、判定和设备操作都在游戏内部，主 Agent 只知道当前在玩哪个游戏。
-- **通信格式 `desktop-game/5`**（`src/agentcade/protocol.py`）：主 Agent 发一条用户输入，游戏回复一条或多条要播报的话。消息放在 A2A DataPart 里；Agent Card 要声明 `streaming=true`，skill 的标签包含 `desktop-game/5`，skill 的 `description` 是开机问候里念的简短介绍。
+- **游戏 Agent**（`src/agentcade/skill_agent.py`）是由 `SKILL.md` 驱动的 ReAct Agent。规则、状态和判定都在游戏内部，主 Agent 只知道当前在玩哪个游戏。游戏不直接操作机器人，而是在回复里附上设备指令，由主 Agent 检查后执行，本地游戏和远程游戏用的是同一种方式。
+- **通信格式 `desktop-game/6`**（`src/agentcade/protocol.py`）：主 Agent 发一条用户输入，游戏回复一条或多条要播报的话和设备指令。消息放在 A2A DataPart 里；Agent Card 要声明 `streaming=true`，skill 的标签包含 `desktop-game/6`，需要的机器人能力写成 `capability:<能力>` 标签，skill 的 `description` 是开机问候里念的简短介绍。
 
   | 方向 | 内容 | A2A 载体 |
   | --- | --- | --- |
-  | 主 → 游戏 | `{"kind": "start\|message\|end", "text": 用户原话}` | 流式 `SendMessage`，`context_id` 标识一局游戏 |
-  | 游戏 → 主 | `{"text": 要播报的话, "session": "active\|ended"}` | 中间回复的状态是 `working`，最后一条是 `completed` |
+  | 主 → 游戏 | `{"kind": "start\|message\|end", "text": 用户原话, "reason": "user\|shutdown"}`，`reason` 只在 `end` 时有 | 流式 `SendMessage`，`context_id` 标识一局游戏 |
+  | 游戏 → 主 | `{"text": 要播报的话, "directives": [设备指令], "session": "active\|ended"}` | 中间回复的状态是 `working`，可以只有设备指令；最后一条是 `completed`，必须有要播报的话 |
+
+  主 Agent 先执行设备指令，再播报文字。游戏只能使用 Agent Card 里声明过的能力，没有声明的指令会被跳过：
+
+  | 指令 | 字段 | 需要声明的能力 |
+  | --- | --- | --- |
+  | `gesture` 点头、摇头 | `name`: `nod` 或 `shake_head` | `motion` |
+  | `expression` 表情，留到下一句话说完 | `name`: `happy` 或 `sorry` | 无 |
+  | `draw` 逐笔画图 | `paths`: 每一步的完整矢量路径 | `expression.vector_accessory.v1` |
+  | `progress` 显示进度 | `seconds`: 预计秒数 | 无 |
+  | `clear` 恢复待机画面 | 无 | 无 |
 
 - **运行时容错**：麦克风、识别服务、语音合成、模型调用出现单次故障时，会自动重试或跳过这一步，程序继续运行。只有启动阶段的问题（配置缺失、机器人未连接、端口被占用）会直接退出。
 - **对话页面**（`src/observability/`）：本机 `8790` 端口提供“对话”和“轨迹”两个视图，实时显示每一轮的识别结果、工具调用、A2A 消息和设备输出。

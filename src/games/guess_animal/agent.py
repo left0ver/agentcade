@@ -1,7 +1,7 @@
 import logging
 from pathlib import Path
 
-from agentcade.protocol import Presentation
+from agentcade.protocol import Draw, Progress
 from agentcade.skill import Skill
 from agentcade.skill_agent import SkillAgent
 from agentcade.tools import NoInput, Tool, original_text_input
@@ -19,8 +19,8 @@ class GameAgent(SkillAgent):
     skill = Skill.load(Path(__file__).with_name("SKILL.md"))
     config = Settings
 
-    def __init__(self, settings, device):
-        super().__init__(settings, device)
+    def __init__(self, settings):
+        super().__init__(settings)
         self.game = Game()
         self.generator = AnimalGenerator(settings)
         self.judge = JevJudge(settings)
@@ -157,13 +157,13 @@ class GameAgent(SkillAgent):
         async def show_drawing():
             if self.game.animal is None:
                 return {"outcome": "question_not_ready", **self.state()}
-            await self.device(Presentation(paths=list(self.game.animal.drawing_steps())))
+            await self.act(Draw(paths=list(self.game.animal.drawing_steps())))
             self.shown = True
-            return {"device_completed": True, **self.state()}
+            return {"shown": True, **self.state()}
 
         async def show_progress():
-            await self.device(Presentation(progress_seconds=self.estimate))
-            return {"device_completed": True}
+            await self.act(Progress(seconds=self.estimate))
+            return {"shown": True}
 
         return [
             Tool("start_game", "初始化游戏并生成第一题，需要等待一段时间。", NoInput, start_game),

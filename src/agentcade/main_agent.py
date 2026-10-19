@@ -10,7 +10,7 @@ from pydantic import Field, create_model
 
 import observability
 from agentcade.config import Settings
-from agentcade.protocol import GameInput, Presentation
+from agentcade.protocol import CAPABILITIES, GameInput, Presentation, presentations
 from agentcade.providers import OpenAIProvider
 from agentcade.tools import NoInput, Tool, ToolInput, ToolRegistry, original_text_input
 from observability.events import SCOPE
@@ -186,7 +186,9 @@ class MainAgent:
                     return await notice(message)
                 self.active.closing = True
                 await self.cancel_pending()
-                completions.append(await self.send(GameInput(kind="end", text=utterance)))
+                completions.append(await self.send(
+                    GameInput(kind="end", text=utterance, reason="user"),
+                ))
                 return {"delivered": True, "game": self.status()}
 
         async def send_message(text):
@@ -209,21 +211,23 @@ class MainAgent:
         ], terminal={"start_game", "end_game", "send_message"})
 
     async def send(self, request):
-        """把一条输入发给当前游戏，返回第一条回复的播报结果；其余回复到达后继续播报。"""
+        """把一条输入发给当前游戏，返回第一条带话的回复的播报结果；其余回复到达后继续播报。"""
         active = self.active
+        request_id = uuid4().hex
         first = asyncio.get_running_loop().create_future()
 
         async def deliver(reply):
             if self.active is not active:
                 return
-            completion = await self.accept(reply)
-            if not first.done():
+            completion = await self.accept(active.game_id, request_id, reply)
+            # 只有设备指令的回复（例如点头）不结束这一轮，等到第一句话播完再恢复收音。
+            if reply.text and not first.done():
                 first.set_result(completion)
 
         async def exchange():
             try:
                 await deliver(await self.games[active.game_id].send(
-                    active.context_id, request, on_reply=deliver,
+                    active.context_id, request, on_reply=deliver, request_id=request_id,
                 ))
             except Exception:
                 logger.exception("游戏请求 %s 失败", request.kind)
@@ -248,10 +252,32 @@ class MainAgent:
             return first
         return first.result()
 
-    async def accept(self, reply):
+    async def accept(self, game_id, request_id, reply):
+        """先执行回复里的设备指令，再播报要说的话。"""
         if reply.session == "ended":
             self.active = None
-        return await self.reply(reply.text, role="game_agent")
+        completion = None
+        outputs = self.permitted(game_id, reply.directives)
+        if outputs:
+            # 设备指令记在发出它的游戏名下，和游戏处理请求时的其他记录排在一起。
+            with observability.game_request(game_id, request_id):
+                completion = await self.emit(outputs, role="game_agent")
+        if reply.text:
+            completion = await self.reply(reply.text, role="game_agent")
+        return completion
+
+    def permitted(self, game_id, directives) -> list[Presentation]:
+        """游戏只能使用它声明过的机器人能力，没有声明的指令跳过并记录。"""
+        declared = set(self.games[game_id].descriptor.required_capabilities)
+        allowed = []
+        for directive in directives:
+            needed = CAPABILITIES.get(directive.type)
+            if needed and needed not in declared:
+                logger.warning("游戏 %s 的 %s 指令需要能力 %s，但没有声明，已跳过",
+                               game_id, directive.type, needed)
+                continue
+            allowed.append(directive)
+        return presentations(allowed)
 
     async def output_done(self, request):
         async with self.lock:
@@ -288,7 +314,7 @@ class MainAgent:
         try:
             if self.active and not self.active.closing:
                 await self.games[self.active.game_id].send(
-                    self.active.context_id, GameInput(kind="end"),
+                    self.active.context_id, GameInput(kind="end", reason="shutdown"),
                 )
         except Exception:
             # 退出时通知游戏失败不影响关闭流程。
