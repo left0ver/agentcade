@@ -135,7 +135,7 @@ async def connect_games(path: Path, device, directory: Path = SOURCE / "games"):
             if isinstance(entry, RemoteGame):
                 descriptor = GameDescriptor(
                     id=entry.id, name=card.name, description=card.description,
-                    aliases=list(skill.examples),
+                    summary=skill.description, aliases=list(skill.examples),
                     required_capabilities=[tag.removeprefix("capability:")
                                            for tag in skill.tags if tag.startswith("capability:")],
                 )

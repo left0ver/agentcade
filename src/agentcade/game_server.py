@@ -140,7 +140,7 @@ async def serve_game(factory, settings, device, *, task_history_limit=64):
         capabilities=AgentCapabilities(streaming=True),
         default_input_modes=["application/json"], default_output_modes=["application/json"],
         skills=[AgentSkill(
-            id=descriptor.id, name=descriptor.name, description=descriptor.description,
+            id=descriptor.id, name=descriptor.name, description=descriptor.summary,
             tags=[PROTOCOL_VERSION, *[
                 f"capability:{name}" for name in descriptor.required_capabilities
             ]], examples=descriptor.aliases,

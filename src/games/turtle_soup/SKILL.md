@@ -3,6 +3,7 @@ id: turtle_soup
 name: 海龟汤
 aliases: [情境推理, 推理游戏, 猜故事]
 description: 我讲一个奇怪的小故事，你来问是或不是的问题，一步步推理出背后的真相。想不出来可以要提示，也可以让我直接公布答案。
+summary: 我讲一个怪故事，你用是非问题推理出真相
 required_capabilities: [motion]
 ---
 

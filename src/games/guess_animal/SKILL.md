@@ -3,6 +3,7 @@ id: guess_animal
 name: 你画我猜
 aliases: [猜动物, 画画猜动物]
 description: 我来画动物，你看图猜名字。一局五题，每题有两次机会。想不出来可以要提示，也可以跳过，随时都能结束游戏。
+summary: 我画一只动物，你来猜它是什么
 required_capabilities: [expression.vector_accessory.v1, motion]
 ---
 

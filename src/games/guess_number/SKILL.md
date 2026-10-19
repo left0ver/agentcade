@@ -3,6 +3,7 @@ id: guess_number
 name: 猜数字
 aliases: [数字游戏, 猜数]
 description: 我会选一个1到20的整数，你来猜，最多有五次机会。猜错时，我会告诉你大了还是小了，也可以问我要提示。
+summary: 我想一个1到20的数，你来猜
 required_capabilities: [motion]
 ---
 

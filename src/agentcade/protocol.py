@@ -16,6 +16,8 @@ class GameDescriptor(Model):
     id: str = Field(pattern=r"^[a-z][a-z0-9_]{0,63}$")
     name: str = Field(min_length=1)
     description: str = Field(min_length=1)
+    # 开机问候里跟在游戏名后面念的一句简短介绍，不带句末标点。
+    summary: str = Field(min_length=1, max_length=30, pattern=r"[^。！？.!?，,；;]$")
     aliases: list[str] = Field(default_factory=list)
     required_capabilities: list[str] = Field(default_factory=list)
 

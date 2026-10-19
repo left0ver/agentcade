@@ -10,6 +10,11 @@ from agentcade.speech_input import SpeechInput
 from observability.server import serve
 
 
+def ordinal(number: int) -> str:
+    """开机问候里的序号，十以内念成中文数字。"""
+    return "一二三四五六七八九十"[number - 1] if 1 <= number <= 10 else str(number)
+
+
 class RobotApplication:
     def __init__(self, app, settings, games, microphone, output):
         self.app, self.settings = app, settings
@@ -39,10 +44,12 @@ class RobotApplication:
                 ready = asyncio.Event()
                 tasks.append(group.create_task(self.listen(ready)))
                 await ready.wait()
-                game_names = "、".join(game.descriptor.name for game in self.agent.games.values())
+                games = "；".join(
+                    f"第{ordinal(index)}个游戏是{game.descriptor.name}，它的玩法是{game.descriptor.summary}"
+                    for index, game in enumerate(self.agent.games.values(), 1))
                 greeting = (
-                    f"你好呀，我是小懒！现在可以玩{game_names}。想玩哪个？也可以和我聊聊天。"
-                    if game_names else "你好呀，我是小懒！现在还没有可玩的游戏，我们可以聊聊天。"
+                    f"你好呀，我是小懒！现在可以玩这些游戏：{games}。你可以跟我说你想玩的游戏，我也可以跟你聊天。"
+                    if games else "你好呀，我是小懒！现在还没有可玩的游戏，我们可以聊聊天。"
                 )
                 await self.agent.reply(greeting)
                 while not self.app.shutdown_requested:

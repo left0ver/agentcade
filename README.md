@@ -89,7 +89,7 @@ options:
 
 | 文件 | 内容 |
 | --- | --- |
-| `SKILL.md` | frontmatter 声明 `id`（和目录名一致）、`name`、`aliases`、`description`、`required_capabilities`；正文写规则和流程 |
+| `SKILL.md` | frontmatter 声明 `id`（和目录名一致）、`name`、`aliases`、`description`、`summary`、`required_capabilities`；正文写规则和流程。`summary` 是一句简短介绍，开机问候时跟在游戏名后面念出来 |
 | `agent.py` | 入口类 `GameAgent`，继承 `SkillAgent`，实现下面几个方法 |
 | `settings.yaml` | 这个游戏读取的配置项 |
 | `config.py` | 配置类，继承 `AgentSettings`，需要包含 `llm: LLMSettings` |
@@ -130,7 +130,7 @@ flowchart LR
 
 - **主 Agent**（`src/agentcade/main_agent.py`）根据用户原话，要么直接聊天回答，要么调用 `list_games`、`start_game`、`end_game`、`send_message` 这四个工具。游戏列表在启动时从 `src/games/` 自动发现。
 - **游戏 Agent**（`src/agentcade/skill_agent.py`）是由 `SKILL.md` 驱动的 ReAct Agent。规则、状态、判定和设备操作都在游戏内部，主 Agent 只知道当前在玩哪个游戏。
-- **通信格式 `desktop-game/5`**（`src/agentcade/protocol.py`）：主 Agent 发一条用户输入，游戏回复一条或多条要播报的话。消息放在 A2A DataPart 里；Agent Card 要声明 `streaming=true`，skill 的标签包含 `desktop-game/5`。
+- **通信格式 `desktop-game/5`**（`src/agentcade/protocol.py`）：主 Agent 发一条用户输入，游戏回复一条或多条要播报的话。消息放在 A2A DataPart 里；Agent Card 要声明 `streaming=true`，skill 的标签包含 `desktop-game/5`，skill 的 `description` 是开机问候里念的简短介绍。
 
   | 方向 | 内容 | A2A 载体 |
   | --- | --- | --- |
