@@ -1,7 +1,7 @@
 from typesafe_sdk import AsyncTypeSafeClient, Choice, RetryPolicy
 
 from games.turtle_soup.config import Settings
-from games.turtle_soup.puzzles import Puzzle
+from games.turtle_soup.library import Puzzle
 
 # 置信度低于门槛时不给出是或不是，统一回答“不好说”。
 UNSURE = "unsure"
@@ -30,14 +30,16 @@ class JevJudge:
     async def answer(self, puzzle: Puzzle, question: str) -> str:
         """返回 yes、no、irrelevant、not_question 或 unsure。"""
         return await self.choose(
-            {"surface": puzzle.surface, "truth": puzzle.truth, "question": question},
+            {"surface": puzzle.surface, "story": puzzle.story, "truth": puzzle.truth,
+             "question": question},
             "answer",
-            "海龟汤推理游戏：surface 是玩家听到的故事，truth 是只有主持人知道的真相。"
-            "根据 truth 判断玩家的 question 应该怎么回答。",
+            "海龟汤推理游戏：surface 是玩家听到的汤面，story 是只有主持人知道的完整故事，"
+            "truth 是故事的摘要。以 story 为准，判断玩家的 question 应该怎么回答。",
             {
-                "yes": "question 是是非问题，按照 truth 答案是肯定的。",
-                "no": "question 是是非问题，按照 truth 答案是否定的。",
-                "irrelevant": "question 是是非问题，但与 truth 无关，或者 truth 里没有相关信息。",
+                "yes": "question 是是非问题，按照 story 答案是肯定的。",
+                "no": "question 是是非问题，按照 story 答案是否定的。",
+                "irrelevant": "question 是是非问题，但 story 里完全没有涉及；"
+                              "story 里提到过的事实，哪怕只是顺带一提，也要答 yes 或 no。",
                 "not_question": "不是一个可以用是或不是回答的问题，例如要答案、要提示、闲聊或陈述推理。",
             },
         )
@@ -45,7 +47,8 @@ class JevJudge:
     async def verify(self, puzzle: Puzzle, guess: str) -> str:
         """返回 solved、partial、wrong 或 unsure。"""
         return await self.choose(
-            {"surface": puzzle.surface, "truth": puzzle.truth, "key": puzzle.key, "guess": guess},
+            {"surface": puzzle.surface, "story": puzzle.story, "truth": puzzle.truth,
+             "key": puzzle.key, "guess": guess},
             "verdict",
             "海龟汤推理游戏：判断玩家的 guess 是否还原了 truth 的关键点 key。",
             {

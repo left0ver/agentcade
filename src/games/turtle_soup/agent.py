@@ -6,13 +6,16 @@ from agentcade.skill import Skill
 from agentcade.skill_agent import SkillAgent
 from agentcade.tools import NoInput, Tool, original_text_input
 from games.turtle_soup.config import Settings
+from games.turtle_soup.generator import PuzzleGenerator
 from games.turtle_soup.judge import JevJudge
-from games.turtle_soup.puzzles import load_puzzles, pick
+from games.turtle_soup.library import Library
 
 logger = logging.getLogger(__name__)
 
 # 判断提问时，是点头、不是摇头；无关和不好说不做动作。
 GESTURES = {"yes": "nod", "no": "shake_head"}
+# 题都玩过时现场出题，超过这么多秒后不再重写，用已有的最好一版。
+GENERATE_BUDGET = 240
 
 
 class GameAgent(SkillAgent):
@@ -22,9 +25,10 @@ class GameAgent(SkillAgent):
     def __init__(self, settings, device):
         super().__init__(settings, device)
         self.judge = JevJudge(settings)
-        self.puzzles = load_puzzles()
+        self.generator = PuzzleGenerator(settings)
+        self.library = Library()
         self.puzzle = None
-        self.played: set[str] = set()
+        self.played = 0
         self.resolved = False
         self.ended = False
         self.questions = 0
@@ -41,23 +45,37 @@ class GameAgent(SkillAgent):
     def state(self):
         # 汤底不放进状态，只在猜中、放弃或结束时由工具结果给出。
         public = {"phase": self.phase(), "questions_asked": self.questions,
-                  "hints_used": self.hints, "puzzles_played": len(self.played),
+                  "hints_used": self.hints, "puzzles_played": self.played,
                   "puzzles_solved": self.solved}
         if self.puzzle is not None:
             public |= {"title": self.puzzle.title, "surface": self.puzzle.surface}
         return public
 
-    def serve(self):
-        puzzle = pick(self.puzzles, self.played)
+    async def serve(self, turn):
+        puzzle, outcome = self.library.pick(), "started"
         if puzzle is None:
-            return {"outcome": "no_more_puzzles", **self.state()}
+            puzzle, outcome = await self.create(turn)
+        self.library.serve(puzzle)
         self.puzzle, self.resolved = puzzle, False
         self.questions = self.hints = 0
-        self.played.add(puzzle.id)
-        return {"outcome": "started", **self.state()}
+        self.played += 1
+        return {"outcome": outcome, **self.state()}
+
+    async def create(self, turn):
+        """题库里的题都玩过了，现场出一道；出题失败时重出最早玩过的那道。"""
+        await turn.say("题库里的题你都玩过了，我现场给你出一道新的，要等一两分钟。")
+        try:
+            item = await self.generator.generate(self.library.puzzles(), must=True,
+                                                 budget=GENERATE_BUDGET)
+            self.library.add(item)
+            return item.puzzle, "generated"
+        except Exception:
+            logger.warning("现场出题失败，改为重出玩过的题", exc_info=True)
+            return self.library.oldest_played(), "replayed"
 
     def reveal(self, outcome):
         self.resolved = True
+        self.library.finish(self.puzzle, outcome)
         return {"outcome": outcome, "truth": self.puzzle.truth, **self.state()}
 
     def tools(self, turn):
@@ -73,7 +91,7 @@ class GameAgent(SkillAgent):
         async def start_game():
             if self.puzzle is not None or self.ended:
                 return {"outcome": "already_started", **self.state()}
-            return self.serve()
+            return await self.serve(turn)
 
         async def ask_question(text):
             nonlocal judged
@@ -128,10 +146,12 @@ class GameAgent(SkillAgent):
                 return {"outcome": "game_over" if self.ended else "not_started", **self.state()}
             if not self.resolved:
                 return {"outcome": "puzzle_unresolved", **self.state()}
-            return self.serve()
+            return await self.serve(turn)
 
         async def end_game():
             unfinished = self.puzzle is not None and not self.resolved
+            if unfinished:
+                self.library.finish(self.puzzle, "unfinished")
             self.ended = True
             turn.end_session()
             # 没猜完的那道题公布汤底，避免模型自己编一个。
@@ -140,7 +160,8 @@ class GameAgent(SkillAgent):
 
         answer_input = original_text_input(turn.text)
         return [
-            Tool("start_game", "开局并随机选一道题，返回题目名称和汤面。", NoInput, start_game),
+            Tool("start_game", "开局并选一道没玩过的题，返回题目名称和汤面；题都玩过时会现场出一道新题，"
+                 "要等一两分钟。", NoInput, start_game),
             Tool("ask_question", "按汤底回答用户的是非提问，结果为 yes、no、irrelevant、"
                  "not_question 或 unsure；每条用户输入只能判断一次。", answer_input, ask_question),
             Tool("submit_solution", "判断用户说出的推理有没有猜中汤底，结果为 solved、partial、"
@@ -148,7 +169,8 @@ class GameAgent(SkillAgent):
                  answer_input, submit_solution),
             Tool("get_hint", "取得这道题的下一条提示，每题三条。", NoInput, get_hint),
             Tool("reveal_truth", "用户放弃时公布汤底，这道题结束。", NoInput, reveal_truth),
-            Tool("next_puzzle", "这道题揭晓之后换一道新题，返回汤面。", NoInput, next_puzzle),
+            Tool("next_puzzle", "这道题揭晓之后换一道没玩过的题，返回汤面；题都玩过时会现场出一道新题。",
+                 NoInput, next_puzzle),
             Tool("end_game", "结束游戏，返回猜中的题数和没猜完那道题的汤底。", NoInput, end_game),
         ]
 
@@ -163,4 +185,7 @@ class GameAgent(SkillAgent):
         try:
             await super().close()
         finally:
-            await self.judge.close()
+            try:
+                await self.judge.close()
+            finally:
+                await self.generator.close()
