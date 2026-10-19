@@ -1,0 +1,2 @@
+# agentcade 提供游戏运行时（SkillAgent、设备指令）和 agentcade-game 命令。
+agentcade @ git+https://github.com/left0ver/agentcade.git

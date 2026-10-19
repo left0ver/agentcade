@@ -27,6 +27,8 @@ dependencies = [
 [project.scripts]
 # uv run publish：登录发布平台并发布应用源码，见 src/agentcade/publish.py。
 publish = "agentcade.publish:main"
+# uv run agentcade-game serve|check|chat：单独运行、检查和试玩游戏，见 src/agentcade/devtools.py。
+agentcade-game = "agentcade.devtools:main"
 
 [build-system]
 requires = ["setuptools>=77"]

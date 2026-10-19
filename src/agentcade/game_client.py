@@ -143,6 +143,8 @@ def remote_descriptor(card, skill) -> GameDescriptor:
         summary=skill.description, aliases=list(skill.examples),
         required_capabilities=[tag.removeprefix("capability:")
                                for tag in skill.tags if tag.startswith("capability:")],
+        version=card.version or "1.0.0", author=card.provider.organization,
+        homepage=card.provider.url or card.documentation_url,
     )
 
 
@@ -295,9 +297,8 @@ class GameHub:
             raise ValueError(f"已经有 ID 为 {descriptor.id} 的游戏了")
         return {
             "url": url, "id": descriptor.id, "name": descriptor.name, "summary": descriptor.summary,
-            "description": descriptor.description, "version": card.version,
-            "author": card.provider.organization,
-            "homepage": card.provider.url or card.documentation_url,
+            "description": descriptor.description, "version": descriptor.version,
+            "author": descriptor.author, "homepage": descriptor.homepage,
             "host": urlsplit(url).hostname, "capabilities": [
                 {"name": name, "label": registry.PERMISSIONS.get(name, name),
                  "supported": self.supports(name)}

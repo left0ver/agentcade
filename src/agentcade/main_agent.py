@@ -78,7 +78,7 @@ class MainAgent:
         self.closed = False
 
     def system_prompt(self):
-        catalog = [game.descriptor.model_dump() for game in self.games.values()]
+        catalog = [game.descriptor.catalog() for game in self.games.values()]
         return (
             SYSTEM_PROMPT
             + "\n\n当前可用游戏：\n"
@@ -161,7 +161,7 @@ class MainAgent:
             return {"message": message}
 
         async def list_games():
-            return [game.descriptor.model_dump() for game in self.games.values()]
+            return [game.descriptor.catalog() for game in self.games.values()]
 
         async def start_game(game_id):
             async with self.lock:

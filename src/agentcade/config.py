@@ -74,7 +74,10 @@ def read_environment(path: Path) -> dict[str, str]:
 
 def read_options(options: tuple[Option, ...], path: Path) -> dict[str, str]:
     """按声明读取一个 Agent 的配置：没写的用默认值，必填项没填就报错。"""
-    stored = read_environment(path)
+    return resolve_options(options, read_environment(path))
+
+
+def resolve_options(options: tuple[Option, ...], stored: dict[str, str]) -> dict[str, str]:
     values = {}
     for option in options:
         values[option.key] = (stored.get(option.key) or "").strip() or option.default
@@ -107,6 +110,20 @@ class AgentSettings:
     @classmethod
     def from_environment(cls, path: Path | None = None) -> Self:
         return cls.from_values(read_options(cls.options(), path or cls.env_file()))
+
+    @classmethod
+    def from_process(cls) -> Self:
+        """单独部署的游戏服务读取配置：先读目录里的 .env（有的话），再用同名环境变量覆盖。
+
+        服务器上一般没有 .env，密钥放在环境变量里，例如 Hugging Face Space 的 Secrets。
+        只读取 settings.yaml 声明过的那几项。
+        """
+        options = cls.options()
+        path = cls.env_file()
+        stored = dict(dotenv_values(path, interpolate=False)) if path.is_file() else {}
+        stored.update({option.key: os.environ[option.key] for option in options
+                       if os.environ.get(option.key)})
+        return cls.from_values(resolve_options(options, stored))
 
     @classmethod
     def from_values(cls, values: dict[str, str]) -> Self:

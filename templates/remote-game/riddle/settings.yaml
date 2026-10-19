@@ -1,0 +1,25 @@
+# 这个游戏读取的配置项。单独部署时从环境变量读取，例如 Hugging Face Space 的 Secrets；
+# 本地调试时也可以写在本目录的 .env 里。
+#   key       环境变量名
+#   label     说明
+#   default   默认值，写成带引号的字符串；不写表示必填
+#   secret    true 表示密钥
+#   advanced  true 表示一般不用改
+options:
+  - key: LLM_API_KEY
+    label: 大模型的 API Key，用于主持游戏（OpenAI 兼容接口）
+    secret: true
+  - key: LLM_BASE_URL
+    label: 大模型的接口地址
+    default: "https://api.deepseek.com"
+  - key: LLM_MODEL_NAME
+    label: 大模型的名称
+    default: "deepseek-flash"
+  - key: LLM_TIMEOUT_SECONDS
+    label: 大模型一次请求最长等待的秒数
+    default: "180"
+    advanced: true
+  - key: LLM_EXTRA_BODY_JSON
+    label: 附加到大模型请求里的参数，JSON 格式
+    default: "{}"
+    advanced: true

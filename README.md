@@ -105,7 +105,24 @@ options:
 
 游戏用到新的 Python 依赖时，要同时加到 `pyproject.toml` 和 `app.json` 里。
 
-游戏也可以独立部署在别的地方：按下面的通信格式实现一个 A2A 服务，用户在设置页面的“游戏”栏粘贴它的地址，确认它能让机器人做什么之后马上就能玩，不用改代码，也不用重启。地址要用 https，本机和局域网地址可以用 http。已安装的远程游戏和停用的内置游戏记在用户目录的 `data/games.json` 里，升级应用不会丢；某个游戏连不上时只跳过它，其他游戏照常可玩。
+不用机器人也能调试游戏：
+
+```bash
+uv run agentcade-game chat src/games/turtle_soup    # 文字模拟器：打字和游戏对话，设备指令显示成文字
+uv run agentcade-game check src/games/turtle_soup   # 合规检查：名片和完整的一局
+```
+
+### 远程游戏
+
+游戏也可以单独部署在别的地方，别人的小懒在设置页面的“游戏”栏粘贴它的地址，确认它能让机器人做什么之后马上就能玩，不用改代码，也不用重启。`templates/remote-game/` 是一个完整的示例，带 Dockerfile 和部署到 Hugging Face Space 或自己服务器的说明。
+
+| 命令 | 作用 |
+| --- | --- |
+| `agentcade-game serve <游戏目录> --port 7860` | 单独运行游戏服务。名片里的对外地址取 `--public-url`、环境变量 `PUBLIC_URL`，在 Hugging Face Space 上自动用 `SPACE_HOST`；配置先读目录里的 `.env`，再用同名环境变量覆盖 |
+| `agentcade-game check <地址或目录>` | 检查名片，再按开局、说一句话、结束真实跑一局，逐项列出问题 |
+| `agentcade-game chat <地址或目录>` | 文字模拟器 |
+
+一个服务可以同时给很多人玩，每一局按 `context_id` 分开，超过 30 分钟没有输入的局自动关闭，同时进行的局数默认最多 32 局（`--max-sessions`）。地址要用 https，本机和局域网地址可以用 http。已安装的远程游戏和停用的内置游戏记在用户目录的 `data/games.json` 里，升级应用不会丢；某个游戏连不上时只跳过它，其他游戏照常可玩。
 
 ## 发布
 

@@ -20,6 +20,14 @@ class GameDescriptor(Model):
     summary: str = Field(min_length=1, max_length=30, pattern=r"[^。！？.!?，,；;]$")
     aliases: list[str] = Field(default_factory=list)
     required_capabilities: list[str] = Field(default_factory=list)
+    # 选填，写进名片，用户安装远程游戏时在确认页上看到。
+    version: str = Field(default="1.0.0", min_length=1, max_length=32)
+    author: str = Field(default="", max_length=64)
+    homepage: str = Field(default="", max_length=512)
+
+    def catalog(self) -> dict:
+        """给主 Agent 看的游戏目录条目，只包含选游戏和介绍玩法用得到的内容。"""
+        return self.model_dump(include={"id", "name", "description", "summary", "aliases"})
 
 
 class Presentation(Model):
