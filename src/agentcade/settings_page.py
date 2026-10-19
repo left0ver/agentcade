@@ -2,6 +2,8 @@
 
 表单内容来自每个 Agent 目录里的 settings.yaml：主 Agent 一栏，games/ 下
 每个游戏一栏，各存各的文件，互相不共用。保存时只改动用户改过的那几项，文件里其余内容原样保留。新增游戏只要声明自己的配置项，页面就会多出一栏。
+
+页面上还有一栏“游戏”：查看各个游戏的状态，安装远程游戏，停用、启用和卸载，由 GameHub 完成。
 """
 import asyncio
 import importlib
@@ -19,8 +21,9 @@ from dotenv.parser import parse_stream
 from starlette.responses import FileResponse, JSONResponse
 from starlette.routing import Route
 
+from agentcade import registry
 from agentcade.config import SOURCE, AgentSettings, Settings, config_file
-from agentcade.game_client import discover
+from agentcade.game_client import GameHub, discover
 from observability.server import PAGE
 
 MAIN = "agentcade"
@@ -65,10 +68,20 @@ def explain(error: Exception) -> str:
     return str(error) or type(error).__name__
 
 
+def disabled() -> set[str]:
+    """停用的内置游戏对应的那几栏，它们的配置不影响启动。"""
+    entries = registry.load()
+    return {f"games/{entry.id}" for entry in entries.games
+            if entry.source == "builtin" and not entry.enabled}
+
+
 def problems(listed: list[Section] | None = None) -> dict[str, str]:
-    """按应用启动时的方式加载每一份配置，返回加载不了的那几栏和原因。"""
+    """按应用启动时的方式加载每一份配置，返回加载不了的那几栏和原因；停用的游戏不检查。"""
     issues = {}
+    skipped = disabled()
     for section in listed or sections():
+        if section.id in skipped:
+            continue
         try:
             section.config.from_environment()
         except (OSError, KeyError, ValueError, TypeError) as error:
@@ -87,11 +100,13 @@ def port() -> int:
 def describe() -> dict:
     listed = sections()
     issues = problems(listed)
+    skipped = disabled()
     result = []
     for section in listed:
         stored = section.stored()
         result.append({
             "id": section.id, "title": section.title, "problem": issues.get(section.id),
+            "disabled": section.id in skipped,
             # 这一栏实际读写的文件：源码目录里有 .env 时是它，否则在用户配置目录里。
             "file": str(config_file(section.local)),
             "fields": [{
@@ -199,17 +214,25 @@ async def ready(app, url):
     return None
 
 
-def routes() -> list[Route]:
+def trusted(request) -> bool:
+    """只接受这个页面自己发来的 JSON 请求，别的网站不能借用户的浏览器改这里的配置或装游戏。"""
+    origin = request.headers.get("origin")
+    return (request.headers.get("content-type", "").split(";")[0].strip() == "application/json"
+            and not (origin and urlsplit(origin).netloc != request.headers.get("host")))
+
+
+def games_data(hub: GameHub) -> dict:
+    return {"running": hub.started, "games": hub.statuses()}
+
+
+def routes(hub: GameHub) -> list[Route]:
     async def page(request):
         return FileResponse(SETTINGS_PAGE, headers={"Cache-Control": "no-store"})
 
     async def data(request):
         if request.method == "GET":
             return JSONResponse(describe(), headers={"Cache-Control": "no-store"})
-        # 只接受这个页面自己发来的 JSON 请求，别的网站不能借用户的浏览器改这里的配置。
-        origin = request.headers.get("origin")
-        if (request.headers.get("content-type", "").split(";")[0].strip() != "application/json"
-                or (origin and urlsplit(origin).netloc != request.headers.get("host"))):
+        if not trusted(request):
             return JSONResponse({"error": "请求来源不对"}, status_code=403)
         try:
             body = await request.json()
@@ -218,4 +241,40 @@ def routes() -> list[Route]:
             return JSONResponse({"error": explain(error)}, status_code=400)
         return JSONResponse(describe())
 
-    return [Route("/settings", page), Route("/settings/data", data, methods=["GET", "POST"])]
+    async def games(request):
+        if request.method == "GET":
+            return JSONResponse(games_data(hub), headers={"Cache-Control": "no-store"})
+        if not trusted(request):
+            return JSONResponse({"error": "请求来源不对"}, status_code=403)
+        try:
+            body = await request.json()
+            body = body if isinstance(body, dict) else {}
+            action, game_id = body.get("action"), body.get("id")
+            if action == "preview":
+                return JSONResponse({"preview": await hub.preview(str(body.get("url", "")))})
+            if action == "install":
+                granted = body.get("granted") or []
+                if not isinstance(granted, list) or not all(isinstance(name, str) for name in granted):
+                    raise ValueError("请求内容不对")
+                await hub.install(str(body.get("url", "")), granted)
+            elif action in {"enable", "disable"}:
+                await hub.set_enabled(str(game_id), action == "enable")
+            elif action == "grant":
+                names = body.get("capabilities") or []
+                if not isinstance(names, list) or not all(isinstance(name, str) for name in names):
+                    raise ValueError("请求内容不对")
+                await hub.grant(str(game_id), names)
+            elif action == "uninstall":
+                await hub.uninstall(str(game_id))
+            else:
+                raise ValueError("不认识的操作")
+        except KeyError:
+            return JSONResponse({"error": "没有这个游戏"}, status_code=404)
+        except (ValueError, OSError) as error:
+            return JSONResponse({"error": explain(error)}, status_code=400)
+        return JSONResponse(games_data(hub))
+
+    return [
+        Route("/settings", page), Route("/settings/data", data, methods=["GET", "POST"]),
+        Route("/settings/games", games, methods=["GET", "POST"]),
+    ]

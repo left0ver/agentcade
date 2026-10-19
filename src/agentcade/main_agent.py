@@ -85,6 +85,10 @@ class MainAgent:
             + json.dumps(catalog, ensure_ascii=False, indent=2)
         )
 
+    def game_name(self, game_id):
+        connection = self.games.get(game_id)
+        return connection.descriptor.name if connection is not None else game_id
+
     @property
     def busy(self):
         return any(not task.done() for task in self.pending)
@@ -94,7 +98,7 @@ class MainAgent:
             return None
         return {
             "game_id": self.active.game_id,
-            "name": self.games[self.active.game_id].descriptor.name,
+            "name": self.game_name(self.active.game_id),
             "busy": self.busy,
             "closing": self.active.closing,
         }
@@ -163,7 +167,7 @@ class MainAgent:
             async with self.lock:
                 claim()
                 if self.active is not None:
-                    name = self.games[self.active.game_id].descriptor.name
+                    name = self.game_name(self.active.game_id)
                     return await notice(f"我们还在玩{name}呢。想换一个的话，先说结束游戏就好。")
                 if game_id not in self.games:
                     raise ValueError("主 Agent 选择了未注册的游戏")
@@ -267,13 +271,14 @@ class MainAgent:
         return completion
 
     def permitted(self, game_id, directives) -> list[Presentation]:
-        """游戏只能使用它声明过的机器人能力，没有声明的指令跳过并记录。"""
-        declared = set(self.games[game_id].descriptor.required_capabilities)
+        """游戏只能使用用户同意给它的机器人能力，其余指令跳过并记录。"""
+        connection = self.games.get(game_id)
+        granted = connection.granted if connection is not None else set()
         allowed = []
         for directive in directives:
             needed = CAPABILITIES.get(directive.type)
-            if needed and needed not in declared:
-                logger.warning("游戏 %s 的 %s 指令需要能力 %s，但没有声明，已跳过",
+            if needed and needed not in granted:
+                logger.warning("游戏 %s 的 %s 指令需要能力 %s，但没有得到允许，已跳过",
                                game_id, directive.type, needed)
                 continue
             allowed.append(directive)

@@ -10,7 +10,7 @@ import yaml
 from dotenv import dotenv_values
 from pydantic import BaseModel, ConfigDict, Field
 
-# 源码都在 src 下；应用目录是它的上一级，放着 app.json、games.json 和 assets。
+# 源码都在 src 下；应用目录是它的上一级，放着 app.json 和 assets。
 SOURCE = Path(__file__).resolve().parent.parent
 ROOT = SOURCE.parent
 DEFAULT_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
@@ -155,7 +155,6 @@ class Settings(AgentSettings):
 
     dashscope_api_key: str = field(repr=False)
     llm: LLMSettings
-    game_catalog: Path
     base_url: str
     asr_model: str
     tts_model: str
@@ -196,7 +195,6 @@ class Settings(AgentSettings):
         return cls(
             dashscope_api_key=values["DASHSCOPE_API_KEY"],
             llm=LLMSettings.from_values(values),
-            game_catalog=(ROOT / values["GAME_CATALOG"]).resolve(),
             base_url=values["DASHSCOPE_BASE_URL"],
             asr_model=values["QWEN_ASR_MODEL"],
             tts_model=values["QWEN_TTS_MODEL"],

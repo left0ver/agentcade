@@ -88,7 +88,40 @@ summary { color: var(--muted); font-size: 13px; cursor: pointer; }
 }
 .save:disabled { opacity: .55; cursor: default; }
 @media (prefers-color-scheme: dark) { .save { color: #0b1020; } }
-@media (max-width: 640px) { .page { padding: 20px 14px 132px; } .label code { display: none; } }
+h2.section { margin: 36px 0 0; font-size: 17px; line-height: 26px; font-weight: 650; }
+.hint { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
+.state.muted { color: var(--muted); }
+.games { padding: 4px 18px 16px; }
+.game { display: flex; gap: 12px; align-items: flex-start; padding: 12px 0; border-bottom: 1px solid var(--border); }
+.game:last-of-type { border-bottom: 0; }
+.game-main { flex: 1; min-width: 0; }
+.game-title { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.game-title b { font-weight: 600; }
+.game-text { color: var(--muted); font-size: 13px; line-height: 20px; overflow-wrap: anywhere; }
+.game-text.error { color: var(--error); }
+.game-actions { display: flex; gap: 6px; flex-shrink: 0; }
+.button:disabled { opacity: .5; cursor: default; }
+.button.danger { color: var(--error); }
+.button.primary { border-color: var(--accent); background: var(--accent); color: #fff; }
+@media (prefers-color-scheme: dark) { .button.primary { color: #0b1020; } }
+.add { display: flex; gap: 8px; margin-top: 14px; }
+.add input {
+  flex: 1; min-width: 0; height: 32px; padding: 0 11px; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--bg); outline: none;
+}
+.add input:focus { border-color: var(--accent); }
+.add .button { height: 32px; }
+.preview { margin-top: 12px; padding: 14px 16px; border: 1px solid var(--border); border-radius: 12px; background: var(--panel); }
+.preview h3 { margin: 0; font-size: 15px; line-height: 22px; }
+.preview ul { margin: 8px 0 0; padding: 0; list-style: none; }
+.preview li { display: flex; gap: 8px; align-items: center; margin-top: 6px; }
+.preview .actions { display: flex; gap: 8px; margin-top: 14px; }
+.games-message { margin-top: 10px; font-size: 13px; color: var(--muted); }
+.games-message.error { color: var(--error); }
+@media (max-width: 640px) {
+  .page { padding: 20px 14px 132px; } .label code { display: none; }
+  .game { flex-direction: column; } .add { flex-direction: column; }
+}
 </style>
 </head>
 <body>
@@ -102,8 +135,22 @@ summary { color: var(--muted); font-size: 13px; cursor: pointer; }
   <a class="button" href="./">返回对话</a>
 </header>
 <div class="page">
-  <h1>服务设置</h1>
+  <h1>设置</h1>
   <div class="banner" id="banner" hidden>填好并保存后，小懒会自动启动，不用重新打开应用。</div>
+  <h2 class="section">游戏</h2>
+  <p class="hint">改动马上生效，不用保存，也不用重启。远程游戏需要你确认它能让机器人做什么。</p>
+  <section class="card">
+    <div class="games">
+      <div id="games"></div>
+      <div class="add">
+        <input id="game-url" type="url" placeholder="粘贴远程游戏的地址，例如 https://example.com/my-game" spellcheck="false" autocomplete="off">
+        <button class="button" id="game-preview" type="button">查看</button>
+      </div>
+      <div id="game-confirm"></div>
+      <div class="games-message" id="games-message"></div>
+    </div>
+  </section>
+  <h2 class="section">服务配置</h2>
   <div id="cards"></div>
 </div>
 <div class="bar">
@@ -149,7 +196,8 @@ function render(data) {
     const head = el("div", "card-head");
     head.append(el("h2", "", section.title));
     if (index) head.append(el("span", "kind", "游戏"));
-    head.append(el("span", section.problem ? "state problem" : "state", section.problem || "已配置"));
+    if (section.disabled) head.append(el("span", "state muted", "游戏已停用，不影响启动"));
+    else head.append(el("span", section.problem ? "state problem" : "state", section.problem || "已配置"));
     const body = el("div", "card-body");
     card.append(head, body);
     const inputs = new Map();
@@ -221,7 +269,147 @@ $("save").addEventListener("click", async () => {
   }
 });
 
+// 游戏：列表、安装、停用、启用、卸载，每个操作马上生效。
+const STATES = { connected: "已连接", disabled: "已停用", waiting: "配置填好后连接" };
+
+function gamesSay(text, kind) {
+  $("games-message").className = `games-message ${kind || ""}`;
+  $("games-message").textContent = text || "";
+}
+
+async function gameAction(body, done) {
+  gamesSay("正在处理…");
+  try {
+    const response = await fetch("settings/games", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      gamesSay(data.error || "操作失败", "error");
+      return null;
+    }
+    gamesSay(done || "");
+    if (data.games) renderGames(data);
+    return data;
+  } catch {
+    gamesSay("没有连上应用，请确认应用还在运行。", "error");
+    return null;
+  }
+}
+
+function gameRow(game) {
+  const row = el("div", "game");
+  const main = el("div", "game-main");
+  const title = el("div", "game-title");
+  title.append(el("b", "", game.name), el("span", "kind", game.source === "builtin" ? "内置" : game.host));
+  if (game.playing) title.append(el("span", "kind", "正在玩"));
+  main.append(title);
+  if (game.summary) main.append(el("div", "game-text", game.summary));
+  const state = game.state === "error" ? `连接失败：${game.error}` : STATES[game.state];
+  main.append(el("div", game.state === "error" ? "game-text error" : "game-text", state));
+  if (game.permissions.length) main.append(el("div", "game-text", `可以：${game.permissions.join("；")}`));
+  if (game.source === "remote") main.append(el("div", "game-text", `你在玩它时说的话会发送到 ${game.host}`));
+  const actions = el("div", "game-actions");
+  if (game.pending.length) {
+    main.append(el("div", "game-text error", `还没允许：${game.pending.map((item) => item.label).join("；")}`));
+    const allow = el("button", "button", "允许");
+    allow.type = "button";
+    allow.onclick = () => gameAction(
+      { action: "grant", id: game.id, capabilities: game.pending.map((item) => item.name) }, "已允许。");
+    actions.append(allow);
+  }
+  if (game.state === "error") {
+    const retry = el("button", "button", "重新连接");
+    retry.type = "button";
+    retry.onclick = () => gameAction({ action: "enable", id: game.id });
+    actions.append(retry);
+  }
+  const toggle = el("button", "button", game.state === "disabled" ? "启用" : "停用");
+  toggle.type = "button";
+  toggle.disabled = game.playing;
+  // 内置游戏停用后不再检查它的配置，服务配置那几栏要跟着刷新。
+  toggle.onclick = () => gameAction({ action: game.state === "disabled" ? "enable" : "disable", id: game.id })
+    .then(() => load());
+  actions.append(toggle);
+  if (game.source === "remote") {
+    const remove = el("button", "button danger", "卸载");
+    remove.type = "button";
+    remove.disabled = game.playing;
+    remove.onclick = () => {
+      if (confirm(`卸载“${game.name}”？`)) gameAction({ action: "uninstall", id: game.id }, "已卸载。");
+    };
+    actions.append(remove);
+  }
+  if (game.playing) toggle.title = "正在玩这个游戏，先说“结束游戏”";
+  row.append(main, actions);
+  return row;
+}
+
+function renderGames(data) {
+  $("games").replaceChildren(...data.games.map(gameRow));
+}
+
+function renderPreview(preview) {
+  const box = el("div", "preview");
+  const head = el("h3", "", preview.name);
+  const meta = [preview.version && `版本 ${preview.version}`, preview.author && `作者 ${preview.author}`].filter(Boolean);
+  box.append(head);
+  if (meta.length) box.append(el("div", "game-text", meta.join(" · ")));
+  box.append(el("div", "", preview.summary));
+  if (preview.description && preview.description !== preview.summary) box.append(el("div", "game-text", preview.description));
+  box.append(el("div", "game-text", "安装后它可以："));
+  const list = el("ul");
+  const boxes = [];
+  for (const capability of preview.capabilities) {
+    const item = el("li");
+    const check = el("input");
+    check.type = "checkbox";
+    check.checked = capability.supported;
+    check.disabled = !capability.supported;
+    boxes.push([capability.name, check]);
+    item.append(check, el("span", "", capability.label + (capability.supported ? "" : "（机器人不支持）")));
+    list.append(item);
+  }
+  const data = el("li");
+  data.append(el("span", "", `你在玩这个游戏时说的话，会发送到 ${preview.host}`));
+  list.append(data);
+  box.append(list);
+  const actions = el("div", "actions");
+  const install = el("button", "button primary", "安装");
+  install.type = "button";
+  install.onclick = async () => {
+    const granted = boxes.filter(([, check]) => check.checked).map(([name]) => name);
+    const done = await gameAction({ action: "install", url: preview.url, granted }, `已安装“${preview.name}”。`);
+    if (done) {
+      $("game-confirm").replaceChildren();
+      $("game-url").value = "";
+    }
+  };
+  const cancel = el("button", "button", "取消");
+  cancel.type = "button";
+  cancel.onclick = () => { $("game-confirm").replaceChildren(); gamesSay(""); };
+  actions.append(install, cancel);
+  box.append(actions);
+  $("game-confirm").replaceChildren(box);
+  // 底部固定的保存栏可能挡住安装按钮，把确认内容滚到页面中间。
+  box.scrollIntoView({ block: "center", behavior: "smooth" });
+}
+
+$("game-preview").addEventListener("click", async () => {
+  const url = $("game-url").value.trim();
+  if (!url) return gamesSay("先粘贴游戏的地址。", "error");
+  $("game-confirm").replaceChildren();
+  const data = await gameAction({ action: "preview", url });
+  if (data?.preview) renderPreview(data.preview);
+});
+
+async function loadGames() {
+  const data = await (await fetch("settings/games", { cache: "no-store" })).json();
+  renderGames(data);
+}
+
 load().catch(() => say("没有连上应用，请确认应用还在运行。", "error"));
+loadGames().catch(() => gamesSay("没有连上应用，请确认应用还在运行。", "error"));
 </script>
 </body>
 </html>

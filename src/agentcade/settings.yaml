@@ -57,7 +57,3 @@ options:
     label: 对话页面的本机端口，不能用 8765 和 8767
     default: "8790"
     advanced: true
-  - key: GAME_CATALOG
-    label: 远程游戏的注册文件，相对路径以应用目录为基准
-    default: "games.json"
-    advanced: true

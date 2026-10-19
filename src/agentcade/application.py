@@ -2,7 +2,7 @@ import asyncio
 import logging
 
 from agentcade import settings_page
-from agentcade.game_client import connect_games
+from agentcade.game_client import GameHub
 from agentcade.main_agent import MainAgent
 from agentcade.microphone import MicrophoneInput
 from agentcade.output import OutputCoordinator
@@ -28,9 +28,8 @@ class RobotApplication:
         await self.listener.run(ready)
 
     async def run(self):
+        # 游戏需要的能力在接入游戏时逐个检查，机器人不支持的游戏只是不接入。
         required = {"expression.runtime.v3", "microphone", "audio.stream"}
-        for game in self.agent.games.values():
-            required.update(game.descriptor.required_capabilities)
         try:
             missing = [name for name in required if not self.app.robot.supports(name)]
             if missing:
@@ -81,13 +80,21 @@ def route_logs(app):
 
 async def run_application(app):
     route_logs(app)
-    # 页面先启动：服务配置还没填好时，用户要在它的设置页面里填写。
-    async with serve(settings_page.port(), routes=settings_page.routes()) as url:
+    hub = GameHub()
+    hub.supports = app.robot.supports
+    # 页面先启动：服务配置还没填好时，用户要在它的设置页面里填写，也可以先管理游戏。
+    async with serve(settings_page.port(), routes=settings_page.routes(hub)) as url:
         app.logger.info("对话页面：%s", url)
         settings = await settings_page.ready(app, url)
         if settings is None:
             return
         microphone = MicrophoneInput(app.robot)
         output = OutputCoordinator(app, settings, microphone)
-        async with connect_games(settings.game_catalog) as games:
-            await RobotApplication(app, settings, games, microphone, output).run()
+        robot = RobotApplication(app, settings, hub.games, microphone, output)
+        hub.in_use = lambda game_id: (robot.agent.active is not None
+                                      and robot.agent.active.game_id == game_id)
+        try:
+            await hub.start()
+            await robot.run()
+        finally:
+            await hub.close()
