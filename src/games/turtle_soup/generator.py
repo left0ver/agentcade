@@ -4,7 +4,7 @@ import logging
 import secrets
 import sys
 import time
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from difflib import SequenceMatcher
 from functools import partial
 from typing import TypeVar
@@ -19,6 +19,8 @@ from games.turtle_soup.library import Generated, Library, Puzzle
 
 logger = logging.getLogger(__name__)
 T = TypeVar("T", bound=BaseModel)
+# 出题进度：阶段（story、condense、review、fallback）和第几轮。
+Progress = Callable[[str, int], Awaitable[None]]
 
 # 每道题随机抽一个题材，避免题目都长得差不多。
 THEMES = (
@@ -156,7 +158,8 @@ class PuzzleGenerator:
     async def draft(self, model: type[T], system: str, request: dict,
                     check: Callable[[T], list[str]]) -> T:
         issues: list[str] = []
-        for _ in range(3):
+        for attempt in range(1, 4):
+            started = time.monotonic()
             output = await self.provider.generate(
                 system, request | ({"format_issues": issues} if issues else {}),
                 model.model_json_schema())
@@ -165,8 +168,10 @@ class PuzzleGenerator:
             except ValidationError as error:
                 issues = [f"{'.'.join(map(str, item['loc']))}: {item['msg']}"
                           for item in error.errors()]
-                continue
-            issues = check(value)
+            else:
+                issues = check(value)
+            logger.info("生成%s第 %d 次，用时 %.0f 秒：%s", model.__name__, attempt,
+                        time.monotonic() - started, "；".join(issues) or "合格")
             if not issues:
                 return value
         raise ValueError("大模型连续 3 次没有给出合格的内容：" + "；".join(issues))
@@ -181,8 +186,12 @@ class PuzzleGenerator:
         return scores | {name: answer.score for name, answer in result.scores.items()}
 
     async def generate(self, avoid: list[Puzzle], *, must: bool = False,
-                       budget: float | None = None) -> Generated:
+                       budget: float | None = None, progress: Progress | None = None) -> Generated:
         """生成一道题。must 为真时，审核没通过也返回总分最高的一版。"""
+        async def report(stage: str, attempt: int) -> None:
+            if progress:
+                await progress(stage, attempt)
+
         started = time.monotonic()
         theme = secrets.choice(THEMES)
         taken = {puzzle.id for puzzle in avoid}
@@ -191,6 +200,7 @@ class PuzzleGenerator:
         for attempt in range(1, ROUNDS + 1):
             if must and best and budget and time.monotonic() - started > budget:
                 break
+            await report("story", attempt)
             story = await self.draft(StoryDraft, STORY_PROMPT, {
                 "theme": theme,
                 "avoid": [f"{puzzle.title}：{puzzle.surface}" for puzzle in avoid[-40:]],
@@ -198,6 +208,7 @@ class PuzzleGenerator:
                 **({"review_issues": issues} if issues else {}),
             }, lambda draft: [f"id {draft.id} 已经用过"] if draft.id in taken else [])
 
+            await report("condense", attempt)
             soup = await self.draft(SoupDraft, CONDENSE_PROMPT, {
                 "story": story.story, "key_twist": story.key_twist,
                 **({"review_issues": issues} if issues else {}),
@@ -205,6 +216,7 @@ class PuzzleGenerator:
             puzzle = Puzzle(id=story.id, title=story.title, surface=soup.surface,
                             truth=soup.truth, key=soup.key, hints=tuple(soup.hints),
                             story=story.story)
+            await report("review", attempt)
             scores = await self.review(puzzle, story.key_twist)
             failed = [name for name, (threshold, _) in REVIEW.items() if scores[name] < threshold]
             item = Generated(puzzle=puzzle, created_at=time.time(), theme=theme,
@@ -218,6 +230,7 @@ class PuzzleGenerator:
                 best = total, item
             issues = [ISSUES[name] for name in failed]
         if must and best:
+            await report("fallback", attempt)
             return best[1]
         raise ValueError(f"连续 {ROUNDS} 轮没有通过审核")
 

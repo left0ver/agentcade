@@ -1,4 +1,6 @@
+import asyncio
 import logging
+import time
 from pathlib import Path
 
 from agentcade.protocol import Presentation
@@ -16,6 +18,21 @@ logger = logging.getLogger(__name__)
 GESTURES = {"yes": "nod", "no": "shake_head"}
 # 题都玩过时现场出题，超过这么多秒后不再重写，用已有的最好一版。
 GENERATE_BUDGET = 240
+# 现场出题时每到一个阶段播报一句；同一阶段很久没说话，就再说一句还在做什么，
+# 间隔从 25 秒开始逐次拉长，最长 60 秒。
+PROGRESS_INTERVALS = (25, 35, 45, 60)
+PROGRESS = {
+    "condense": "故事写好了，正在把它改成谜题。",
+    "review": "谜题出好了，我检查一下合不合格。",
+    "fallback": "改了几版都不太满意，先用最好的这一版。",
+}
+RETRY = "这一版没通过检查，我换个故事重新写。"
+WAITING = {
+    "story": ("故事还在写，再等我一下。", "还在写故事，我想把前因后果编圆一点。",
+              "故事还没写完，已经过了{seconds}秒了，谢谢你耐心等。"),
+    "condense": ("还在改成谜题，再等我一下。", "谜题还在改，已经过了{seconds}秒了。"),
+    "review": ("还在检查，马上就好。",),
+}
 
 
 class GameAgent(SkillAgent):
@@ -63,15 +80,48 @@ class GameAgent(SkillAgent):
 
     async def create(self, turn):
         """题库里的题都玩过了，现场出一道；出题失败时重出最早玩过的那道。"""
-        await turn.say("题库里的题你都玩过了，我现场给你出一道新的，要等一两分钟。")
+        started = spoke = time.monotonic()
+        stage, waited = "story", 0
+
+        async def say(text):
+            nonlocal spoke
+            spoke = time.monotonic()
+            try:
+                await turn.say(text)
+            except Exception:
+                # 进度播报只是告知，发送失败不影响出题。
+                logger.warning("出题进度没有播报：%s", text, exc_info=True)
+
+        async def progress(name, attempt):
+            nonlocal stage, waited
+            stage, waited = name, 0
+            text = RETRY if name == "story" and attempt > 1 else PROGRESS.get(name)
+            if text:
+                await say(text)
+
+        async def waiting():
+            nonlocal waited
+            while True:
+                await asyncio.sleep(1)
+                interval = PROGRESS_INTERVALS[min(waited, len(PROGRESS_INTERVALS) - 1)]
+                if stage in WAITING and time.monotonic() - spoke >= interval:
+                    texts = WAITING[stage]
+                    text = texts[waited % len(texts)]
+                    waited += 1
+                    await say(text.format(seconds=round(time.monotonic() - started)))
+
+        await say("题库里的题你都玩过了，我现场给你出一道新的，先写个故事，大概要一两分钟。")
+        reminder = asyncio.create_task(waiting())
         try:
             item = await self.generator.generate(self.library.puzzles(), must=True,
-                                                 budget=GENERATE_BUDGET)
+                                                 budget=GENERATE_BUDGET, progress=progress)
             self.library.add(item)
             return item.puzzle, "generated"
         except Exception:
             logger.warning("现场出题失败，改为重出玩过的题", exc_info=True)
             return self.library.oldest_played(), "replayed"
+        finally:
+            reminder.cancel()
 
     def reveal(self, outcome):
         self.resolved = True
