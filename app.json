@@ -22,7 +22,7 @@
   "supported_host_platforms": [
     "macos"
   ],
-  "description": "与机器人聊天，选择你画我猜或猜数字，通过 A2A 接入更多游戏。",
+  "description": "与机器人聊天，玩你画我猜和海龟汤，通过 A2A 接入更多游戏。",
   "author": "left0ver",
   "icon": "assets/logo.svg"
 }

@@ -149,27 +149,29 @@ def game_request(turn, kind, game_id):
 
 def check_catalog(turn):
     problems = [] if not turn.requests else ["不应该向游戏发送请求"]
-    if not any("猜数字" in text or "你画我猜" in text for text in turn.spoken):
+    if not any("海龟汤" in text or "你画我猜" in text for text in turn.spoken):
         problems.append("回复里没有提到可玩的游戏")
     return problems
 
 
-def check_number_start(turn):
-    request, problems = game_request(turn, "start", "guess_number")
+def check_soup_start(turn):
+    request, problems = game_request(turn, "start", "turtle_soup")
     if request and request.get("ok") and request["result"]["session"] != "active":
         problems.append("开局后会话应当继续")
-    if not turn.tool("guess_number", "start_game"):
+    if not turn.tool("turtle_soup", "start_game"):
         problems.append("游戏没有调用 start_game")
     return problems
 
 
-def check_guess(turn):
-    _, problems = game_request(turn, "message", "guess_number")
-    call = turn.tool("guess_number", "submit_guess")
-    if not call:
-        problems.append("游戏没有调用 submit_guess")
-    elif call["arguments"].get("number") != 15:
-        problems.append(f"提交的数字是 {call['arguments'].get('number')}，应当是 15")
+def check_question(turn):
+    _, problems = game_request(turn, "message", "turtle_soup")
+    call = turn.tool("turtle_soup", "ask_question")
+    if not call or not call.get("ok"):
+        problems.append("游戏没有成功调用 ask_question")
+    elif call["arguments"].get("text") != turn.heard:
+        problems.append("提交的提问不是用户原话")
+    elif call["result"].get("answer") not in {"yes", "no", "irrelevant", "not_question", "unsure"}:
+        problems.append(f"回答结果异常：{call['result'].get('answer')}")
     return problems
 
 
@@ -229,11 +231,12 @@ def check_answer(turn):
 
 STEPS = [
     Step("查询游戏", "有哪些游戏可以玩？", check_catalog),
-    Step("开始猜数字", "我想玩猜数字。", check_number_start),
-    Step("猜一个数", "我猜十五。", check_guess),
-    Step("猜数字要提示", "给我一个提示吧。", check_hint("guess_number")),
+    # 题库里的题都玩过时会现场出题，最多要等几分钟。
+    Step("开始海龟汤", "我想玩海龟汤。", check_soup_start, timeout=420),
+    Step("提一个问题", "这件事发生在白天吗？", check_question),
+    Step("海龟汤要提示", "给我一个提示吧。", check_hint("turtle_soup")),
     Step("游戏中闲聊", "对了，你叫什么名字？", check_chat),
-    Step("结束猜数字", "结束游戏。", check_end("guess_number")),
+    Step("结束海龟汤", "结束游戏。", check_end("turtle_soup")),
     Step("开始你画我猜", "我们来玩你画我猜。", check_animal_start, timeout=420),
     Step("你画我猜要提示", "给我一个提示吧。", check_hint("guess_animal")),
     Step("回答动物", "我猜是恐龙。", check_answer),

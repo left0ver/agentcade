@@ -11,14 +11,13 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="MIT License"></a>
 </p>
 
-桌面机器人“小懒”：用语音和它聊天、玩小游戏。主 Agent 负责聊天和选择游戏，每个游戏是一个独立的 Agent，通过 A2A 通信。现在有“你画我猜”、“猜数字”和“海龟汤”，往 `src/games/` 里放一个目录就能加一个新游戏。
+桌面机器人“小懒”：用语音和它聊天、玩小游戏。主 Agent 负责聊天和选择游戏，每个游戏是一个独立的 Agent，通过 A2A 通信。现在有“你画我猜”和“海龟汤”，往 `src/games/` 里放一个目录就能加一个新游戏。
 
 ## 怎么玩
 
-说“有哪些游戏”查看游戏，说“玩猜数字”开始，说“结束游戏”退出。游戏中可以随时聊天，同一时间只能玩一个游戏，想换游戏要先结束当前这一局。机器人说话时不收音，说完再开口。
+说“有哪些游戏”查看游戏，说“玩海龟汤”开始，说“结束游戏”退出。游戏中可以随时聊天，同一时间只能玩一个游戏，想换游戏要先结束当前这一局。机器人说话时不收音，说完再开口。
 
 - **你画我猜**：机器人在屏幕上画一种动物，你来猜。每局 5 题，每题 2 次机会。说“提示”要线索，不占机会；说“跳过”公布答案并直接画下一题；一题答完后说“下一题”继续。画一题要等几十秒，这段时间可以聊天。
-- **猜数字**：机器人想一个 1 到 20 的整数，你有五次机会，每次会告诉你大了还是小了，说“提示”可以知道是奇数还是偶数。
 - **海龟汤**：机器人讲一个离奇的小故事，你只能问“是不是”的问题，机器人点头、摇头或者说无关，帮你一步步推理出真相。想明白了就把推理说出来；说“提示”要线索，说“公布答案”放弃这一道，说“再来一道”换题。玩过的题不会重复出，题库里的都玩过了，机器人会现场出一道新题，要等一两分钟。
 
 ## 安装后第一次使用
@@ -43,7 +42,6 @@
 ```bash
 cp src/agentcade/.env.example src/agentcade/.env
 cp src/games/guess_animal/.env.example src/games/guess_animal/.env
-cp src/games/guess_number/.env.example src/games/guess_number/.env
 cp src/games/turtle_soup/.env.example src/games/turtle_soup/.env
 # 分别填写这几个文件
 uv sync
@@ -85,7 +83,7 @@ options:
 
 ## 添加游戏
 
-在 `src/games/<game_id>/` 下新建一个目录，重启应用就会自动接入，不用改主 Agent。可以参考 `src/games/guess_number/` 这个完整示例。
+在 `src/games/<game_id>/` 下新建一个目录，重启应用就会自动接入，不用改主 Agent。可以参考 `src/games/turtle_soup/` 这个完整示例。
 
 | 文件 | 内容 |
 | --- | --- |
