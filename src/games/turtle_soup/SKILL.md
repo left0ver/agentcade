@@ -68,4 +68,4 @@ start_game 和 next_puzzle 的 outcome 为 generated 时，说这是刚出的新
 
 ### 结束
 
-event 为 end 时调用 end_game：结果带有 truth 时先把这道题的汤底讲给用户听，再说一共猜中了几道并告别；没有就直接告别。
+event 为 end 时调用 end_game：结果带有 truth 时先把这道题的汤底讲给用户听，再说一共猜中了几道并告别。结果没有 truth 说明这道题已经揭晓过了，不要再讲一遍汤底，直接说一共猜中了几道并告别。
