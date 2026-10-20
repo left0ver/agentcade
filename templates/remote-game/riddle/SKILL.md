@@ -6,8 +6,8 @@ description: 我出一个谜语，你来猜谜底。猜对了我会点头，还�
 summary: 我出一个谜语，你来猜谜底
 required_capabilities: [motion, expression.vector_accessory.v1]
 version: "1.0.0"
-author: 你的名字
-homepage: https://example.com
+author: left0ver
+homepage: https://github.com/left0ver/agentcade/tree/main/templates/remote-game
 ---
 
 # 猜谜语
