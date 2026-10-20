@@ -45,7 +45,9 @@ def load_options(path: Path) -> tuple[Option, ...]:
 
 def user_config_dir() -> Path:
     """安装后的应用保存用户配置的目录，在源码目录之外，升级和重装应用时不会丢。"""
-    app_id = json.loads((ROOT / "app.json").read_text(encoding="utf-8"))["id"]
+    manifest = ROOT / "app.json"
+    # 作为库安装时（单独部署游戏服务、CI）没有 app.json，也用不到用户目录。
+    app_id = json.loads(manifest.read_text(encoding="utf-8"))["id"] if manifest.is_file() else "agentcade"
     if sys.platform == "win32":
         base = Path(os.environ.get("LOCALAPPDATA") or Path.home() / "AppData/Local")
     elif sys.platform == "darwin":

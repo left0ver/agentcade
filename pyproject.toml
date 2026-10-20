@@ -34,6 +34,10 @@ agentcade-game = "agentcade.devtools:main"
 requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
+[tool.setuptools.package-data]
+# 用 pip 安装（单独部署游戏服务、CI）时也要带上的数据文件：配置项声明、游戏流程和题库、页面、表情图。
+"*" = ["*.yaml", "*.md", "*.html", "assets/emojis/*.svg"]
+
 [dependency-groups]
 dev = ["ruff>=0.12,<1"]
 
