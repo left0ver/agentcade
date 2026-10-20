@@ -82,7 +82,7 @@ def save(registry: Registry, path: Path = PATH) -> None:
 
 
 def local_host(host: str) -> bool:
-    """本机或局域网地址：可以用 http。"""
+    """本机或局域网地址。"""
     if host == "localhost" or host.endswith(".local"):
         return True
     try:
@@ -93,12 +93,21 @@ def local_host(host: str) -> bool:
 
 
 def check_url(url: str) -> str:
-    """检查用户填的游戏地址，返回去掉末尾斜杠的地址。"""
+    """检查用户填的游戏地址，返回去掉末尾斜杠的地址。可以是 https 域名，也可以是 http 的 IP 加端口。"""
     url = url.strip().rstrip("/")
     parts = urlsplit(url)
     if (parts.scheme not in {"http", "https"} or not parts.hostname
             or parts.username or parts.password or parts.query or parts.fragment):
-        raise ValueError("游戏地址要是 https:// 开头的网址，例如 https://example.com/my-game")
-    if parts.scheme == "http" and not local_host(parts.hostname):
-        raise ValueError("公网地址必须用 https；http 只能用于本机或局域网")
+        raise ValueError("游戏地址要是 http:// 或 https:// 开头的网址，"
+                         "例如 https://example.com/my-game、http://1.2.3.4:7860")
+    try:
+        _ = parts.port  # 端口不是 0 到 65535 的数字时抛错
+    except ValueError:
+        raise ValueError(f"游戏地址的端口不对：{parts.netloc}") from None
     return url
+
+
+def unencrypted(url: str) -> bool:
+    """公网上用 http 的地址：玩游戏时说的话和游戏的回复都明文传输，安装时提醒用户。"""
+    parts = urlsplit(url)
+    return parts.scheme == "http" and not local_host(parts.hostname or "")

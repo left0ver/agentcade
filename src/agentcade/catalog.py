@@ -130,7 +130,7 @@ def parse(data: object) -> tuple[Catalog, list[str]]:
 
 def validate(data: object, builtin: set[str]) -> list[str]:
     """审核用的严格检查：除了每个条目合规，还要没有多余字段、ID 和地址不重复、
-    不和内置游戏重名、地址是公网的 https。返回发现的问题。"""
+    不和内置游戏重名、地址是公网地址。返回发现的问题。"""
     try:
         catalog, problems = parse(data)
     except ValueError as error:
@@ -148,8 +148,8 @@ def validate(data: object, builtin: set[str]) -> list[str]:
             problems.append(f"{listing.id}：ID 重复")
         if listing.url in seen_urls:
             problems.append(f"{listing.id}：地址 {listing.url} 重复")
-        if urlsplit(listing.url).scheme != "https":
-            problems.append(f"{listing.id}：目录里的游戏地址要用公网的 https")
+        if registry.local_host(urlsplit(listing.url).hostname or ""):
+            problems.append(f"{listing.id}：目录里的游戏要用公网地址，不能是本机或局域网地址")
         seen_ids.add(listing.id)
         seen_urls.add(listing.url)
     return problems

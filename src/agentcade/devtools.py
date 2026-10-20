@@ -176,7 +176,9 @@ async def check(args) -> int:
         except ValueError as error:
             report.add("fail", str(error))
             return 1
-        if urlsplit(url).scheme == "https" or registry.local_host(urlsplit(url).hostname or ""):
+        if registry.unencrypted(url):
+            report.add("warn", f"地址 {url} 用的是 http，传输不加密，用户安装时会看到提醒；有域名的话建议配上 https")
+        else:
             report.add("ok", f"地址 {url}")
         try:
             connection, _ = await connect(stack, url, args.timeout)
@@ -220,7 +222,7 @@ async def check(args) -> int:
         if stale is not None and stale.session != "ended":
             report.add("fail", "发给不存在的一局时，应该回复这一局已经结束（session 为 ended）")
     print("\n" + ("有不合规的地方，修改后再检查一次。" if report.failed else "检查通过。"), flush=True)
-    if not report.failed and urlsplit(url).scheme == "https":
+    if not report.failed and not registry.local_host(urlsplit(url).hostname or ""):
         if descriptor.author:
             print("\n想让别人在设置页面的“发现更多游戏”里看到它，把下面这一条加进 catalog/games.json "
                   "的 games，再提一个 PR，见 catalog/README.md：", flush=True)

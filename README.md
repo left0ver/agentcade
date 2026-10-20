@@ -123,7 +123,7 @@ uv run agentcade-game check src/games/turtle_soup   # 合规检查：名片和�
 | `agentcade-game chat <地址或目录>` | 文字模拟器 |
 | `agentcade-game catalog catalog/games.json` | 检查游戏目录的格式；加 `--online` 再读取每个游戏的名片，核对和条目一致 |
 
-一个服务可以同时给很多人玩，每一局按 `context_id` 分开，超过 30 分钟没有输入的局自动关闭，同时进行的局数默认最多 32 局（`--max-sessions`）。地址要用 https，本机和局域网地址可以用 http。已安装的远程游戏和停用的内置游戏记在用户目录的 `data/games.json` 里，升级应用不会丢；某个游戏连不上时只跳过它，其他游戏照常可玩。
+一个服务可以同时给很多人玩，每一局按 `context_id` 分开，超过 30 分钟没有输入的局自动关闭，同时进行的局数默认最多 32 局（`--max-sessions`）。地址可以是 https 域名，也可以是 `http://IP:端口`；公网地址用 http 时传输不加密，安装时设置页面会提醒用户。已安装的远程游戏和停用的内置游戏记在用户目录的 `data/games.json` 里，升级应用不会丢；某个游戏连不上时只跳过它，其他游戏照常可玩。
 
 **游戏目录**：[`catalog/games.json`](catalog/games.json) 是审核过的远程游戏列表，设置页面在“发现更多游戏”里列出它们。小懒按地址认游戏：在目录里的标“已审核”；版本或者要的能力和审核时不一样，标“当前版本未经审核”；不在目录里的标“未审核”；已下架的标红并建议卸载，也不能再安装。目录在设置页面打开时读取，读不到时用上次缓存的内容，官方地址连不上会换 jsDelivr 镜像。开发者提交游戏、审核和下架的流程见 [`catalog/README.md`](catalog/README.md)。
 

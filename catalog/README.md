@@ -6,7 +6,7 @@
 
 ## 提交游戏
 
-1. 用 [`templates/remote-game`](../templates/remote-game) 写好游戏，部署到一个公网的 https 地址，比如 Hugging Face Space。`SKILL.md` 里要写 `author`。
+1. 用 [`templates/remote-game`](../templates/remote-game) 写好游戏，部署到一个公网地址，比如自己的服务器；有域名的话建议配上 https。`SKILL.md` 里要写 `author`。
 2. 运行合规检查：
 
    ```bash
@@ -26,7 +26,7 @@
 | --- | --- |
 | `id` | 游戏 ID，和名片一致，不能和内置游戏或目录里别的游戏重复 |
 | `name`、`summary` | 名称和简短介绍，和名片一致 |
-| `url` | 游戏地址，必须是公网的 https |
+| `url` | 游戏地址，必须是公网地址；用 http 时设置页面会标出“未加密” |
 | `author`、`homepage` | 作者和主页 |
 | `version`、`capabilities` | 审核通过的版本，和它要的机器人能力 |
 | `reviewed_at` | 审核日期，合并时由审核人确认 |

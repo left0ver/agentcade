@@ -165,7 +165,7 @@ h2.section { margin: 36px 0 0; font-size: 17px; line-height: 26px; font-weight: 
         <div id="catalog"></div>
       </div>
       <div class="add">
-        <input id="game-url" type="url" placeholder="也可以粘贴没有收录的游戏地址，例如 https://example.com/my-game" spellcheck="false" autocomplete="off">
+        <input id="game-url" type="url" placeholder="也可以粘贴没有收录的游戏地址，例如 http://1.2.3.4:7860" spellcheck="false" autocomplete="off">
         <button class="button" id="game-preview" type="button">查看</button>
       </div>
       <div id="game-confirm"></div>
@@ -345,6 +345,7 @@ function gameRow(game) {
   const title = el("div", "game-title");
   title.append(el("b", "", game.name), el("span", "kind", game.source === "builtin" ? "内置" : game.host));
   if (game.review) title.append(reviewBadge(game.review));
+  if (game.unencrypted) title.append(el("span", "kind warn", "未加密"));
   if (game.playing) title.append(el("span", "kind", "正在玩"));
   main.append(title);
   if (game.summary) main.append(el("div", "game-text", game.summary));
@@ -415,6 +416,10 @@ function renderPreview(preview) {
   } else {
     box.append(el("div", "notice bad", `这个游戏已经从游戏目录下架，不能安装：${review.note}`));
   }
+  if (preview.unencrypted) {
+    box.append(el("div", "notice warn",
+      "这个地址用的是 http，没有加密：你在玩这个游戏时说的话和游戏的回复都会明文传输，网络上的其他人可能看到或改动。"));
+  }
   box.append(el("div", "", preview.summary));
   if (preview.description && preview.description !== preview.summary) box.append(el("div", "game-text", preview.description));
   box.append(el("div", "game-text", "安装后它可以："));
@@ -464,6 +469,7 @@ function catalogRow(listing) {
   const main = el("div", "game-main");
   const title = el("div", "game-title");
   title.append(el("b", "", listing.name), el("span", "kind", listing.host), el("span", "kind ok", "已审核"));
+  if (listing.unencrypted) title.append(el("span", "kind warn", "未加密"));
   main.append(title, el("div", "game-text", listing.summary));
   const meta = [`作者 ${listing.author}`, `版本 ${listing.version}`, `${listing.reviewed_at} 审核`];
   main.append(el("div", "game-text", meta.join(" · ")));

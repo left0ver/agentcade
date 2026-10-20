@@ -38,6 +38,8 @@ agentcade-game serve riddle --port 7860  # 运行服务，小懒的设置页面�
 
 ## 部署到 Hugging Face Space
 
+从 2026 年 7 月起，免费账号不能再建 Docker 类型的 Space，要订阅 PRO。
+
 1. 在 Hugging Face 新建一个 Space，类型选 Docker。
 2. 把这个目录推到 Space 的仓库。
 3. 在 Space 的 Settings → Variables and secrets 里添加 Secret `LLM_API_KEY`，需要的话再加 `LLM_BASE_URL`、`LLM_MODEL_NAME`。
@@ -48,8 +50,20 @@ agentcade-game serve riddle --port 7860  # 运行服务，小懒的设置页面�
 
 ## 部署到自己的服务器
 
+最简单的是直接用 IP 和端口，在防火墙或安全组里放行 7860 端口：
+
 ```bash
 docker build -t riddle .
+docker run -d --restart unless-stopped -p 7860:7860 \
+  -e PUBLIC_URL=http://<服务器 IP>:7860 \
+  -e LLM_API_KEY=... riddle
+```
+
+用户在设置页面填 `http://<服务器 IP>:7860`。http 不加密，用户玩游戏时说的话会明文传输，安装时设置页面会提醒。
+
+有域名的话建议配上 HTTPS：端口只绑在本机，`PUBLIC_URL` 改成 https 地址。
+
+```bash
 docker run -d --restart unless-stopped -p 127.0.0.1:7860:7860 \
   -e PUBLIC_URL=https://games.example.com/riddle \
   -e LLM_API_KEY=... riddle
@@ -77,7 +91,7 @@ games.example.com {
 
 ## 要求
 
-- 地址用 https；本机和局域网地址可以用 http。
+- 地址可以是 https 域名，也可以是 `http://IP:端口`。公网地址用 http 时传输不加密，用户安装时会看到提醒。
 - 一个服务可以同时给很多人玩，每一局按 `context_id` 分开。超过 30 分钟没有输入的局会自动关闭，同时进行的局数默认最多 32 局。
 - 游戏用的大模型和其他服务都由你自己付费，用户不需要提供密钥。
 - 用户在玩这个游戏时说的话会发到你的服务器上，请妥善对待。

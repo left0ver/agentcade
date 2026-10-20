@@ -304,7 +304,7 @@ class GameHub:
             "url": url, "id": descriptor.id, "name": descriptor.name, "summary": descriptor.summary,
             "description": descriptor.description, "version": descriptor.version,
             "author": descriptor.author, "homepage": descriptor.homepage,
-            "host": urlsplit(url).hostname, "capabilities": [
+            "host": urlsplit(url).hostname, "unencrypted": registry.unencrypted(url), "capabilities": [
                 {"name": name, "label": registry.PERMISSIONS.get(name, name),
                  "supported": self.supports(name)}
                 for name in descriptor.required_capabilities
@@ -404,6 +404,7 @@ class GameHub:
                 "summary": connection.descriptor.summary if connection else entry.summary or "",
                 "capabilities": declared, "granted": entry.granted, "version": version,
                 "review": catalog.review(entry.url, version, declared if connection else None),
+                "unencrypted": registry.unencrypted(entry.url),
             }))
         return result
 
@@ -418,7 +419,8 @@ class GameHub:
                 continue
             games.append({
                 **listing.model_dump(mode="json", exclude={"status", "note"}),
-                "host": urlsplit(listing.url).hostname, "installed": listing.url in installed,
+                "host": urlsplit(listing.url).hostname, "unencrypted": registry.unencrypted(listing.url),
+                "installed": listing.url in installed,
                 # 装了另一个同 ID 的游戏（比如粘贴地址装的），这个就装不了。
                 "taken": listing.url not in installed and listing.id in taken,
                 "permissions": [registry.PERMISSIONS.get(name, name) for name in listing.capabilities],
