@@ -1,2 +1,3 @@
 # agentcade 提供游戏运行时（SkillAgent、设备指令）和 agentcade-game 命令。
-agentcade @ git+https://github.com/left0ver/agentcade.git
+# 用源码压缩包安装，构建时不需要 git。
+agentcade @ https://github.com/left0ver/agentcade/archive/refs/heads/main.tar.gz

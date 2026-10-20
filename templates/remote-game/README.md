@@ -83,6 +83,21 @@ games.example.com {
 
 `PUBLIC_URL` 要和用户填写的地址完全一致，名片里的消息地址就是 `PUBLIC_URL` 加 `/a2a`。
 
+### 国内服务器
+
+Dockerfile 默认用国内的镜像源：基础镜像从 DaoCloud 拉，Python 依赖从清华镜像装，agentcade 的源码经 gh-proxy.com 从 GitHub 下载，直接 `docker build -t riddle .` 就行。
+
+这些镜像站时常变化，哪个不能用了就换一个，例如：
+
+```bash
+docker build -t riddle \
+  --build-arg PYTHON_IMAGE=<别的 Docker 镜像源>/library/python:3.11-slim \
+  --build-arg PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/ \
+  --build-arg GITHUB_PROXY=https://gh-proxy.org/ .
+```
+
+海外部署时换回官方源：`--build-arg PYTHON_IMAGE=python:3.11-slim --build-arg PIP_INDEX_URL=https://pypi.org/simple --build-arg GITHUB_PROXY=`。GitHub 镜像站是第三方服务，源码经过它转发，介意的话自己部署一个 gh-proxy。
+
 ## 提交到游戏目录
 
 想让别人在小懒设置页面的“发现更多游戏”里直接看到它：`check` 全部通过后会打印一条目录条目，把它加进 [agentcade 仓库](https://github.com/left0ver/agentcade) 的 `catalog/games.json`，提一个 PR。提交要求和审核标准见仓库里的 `catalog/README.md`。
