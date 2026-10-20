@@ -1,4 +1,20 @@
 {
   "format": 1,
-  "games": []
+  "games": [
+    {
+      "id": "riddle",
+      "name": "猜谜语",
+      "summary": "我出一个谜语，你来猜谜底",
+      "url": "https://riddle.leftover.cn",
+      "author": "left0ver",
+      "homepage": "https://github.com/left0ver/agentcade/tree/main/templates/remote-game",
+      "version": "1.0.1",
+      "capabilities": [
+        "motion",
+        "expression.vector_accessory.v1"
+      ],
+      "reviewed_at": "2026-10-21",
+      "status": "listed"
+    }
+  ]
 }
