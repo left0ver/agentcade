@@ -82,6 +82,7 @@ async def run_application(app):
     route_logs(app)
     hub = GameHub()
     hub.supports = app.robot.supports
+    hub.catalog.sources = settings_page.catalog_sources
     # 页面先启动：服务配置还没填好时，用户要在它的设置页面里填写，也可以先管理游戏。
     async with serve(settings_page.port(), routes=settings_page.routes(hub)) as url:
         app.logger.info("对话页面：%s", url)

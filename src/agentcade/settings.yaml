@@ -53,6 +53,10 @@ options:
     label: 麦克风音量放大倍数，范围 1 到 8
     default: "4"
     advanced: true
+  - key: GAME_CATALOG_URL
+    label: 游戏目录的地址，设置页面从这里列出审核过的游戏；用官方目录时连不上会自动换镜像
+    default: "https://raw.githubusercontent.com/left0ver/agentcade/main/catalog/games.json"
+    advanced: true
   - key: OBSERVABILITY_PORT
     label: 对话页面的本机端口，不能用 8765 和 8767
     default: "8790"

@@ -3,7 +3,8 @@
 表单内容来自每个 Agent 目录里的 settings.yaml：主 Agent 一栏，games/ 下
 每个游戏一栏，各存各的文件，互相不共用。保存时只改动用户改过的那几项，文件里其余内容原样保留。新增游戏只要声明自己的配置项，页面就会多出一栏。
 
-页面上还有一栏“游戏”：查看各个游戏的状态，安装远程游戏，停用、启用和卸载，由 GameHub 完成。
+页面上还有一栏“游戏”：查看各个游戏的状态，从游戏目录或者粘贴地址安装远程游戏，停用、启用和卸载，
+由 GameHub 完成。
 """
 import asyncio
 import importlib
@@ -21,7 +22,7 @@ from dotenv.parser import parse_stream
 from starlette.responses import FileResponse, JSONResponse
 from starlette.routing import Route
 
-from agentcade import registry
+from agentcade import catalog, registry
 from agentcade.config import SOURCE, AgentSettings, Settings, config_file
 from agentcade.game_client import GameHub, discover
 from observability.server import PAGE
@@ -95,6 +96,15 @@ def port() -> int:
     with suppress(Exception):
         return int(sections()[0].stored().get("OBSERVABILITY_PORT") or 8790)
     return 8790
+
+
+def catalog_sources() -> tuple[str, ...]:
+    """游戏目录的地址。用官方目录时连不上会换镜像，填了别的地址就只用它；改了马上生效。"""
+    with suppress(Exception):
+        value = Section(MAIN, "", Settings).stored().get("GAME_CATALOG_URL", "").strip()
+        if value and value != catalog.OFFICIAL[0]:
+            return (value,)
+    return catalog.OFFICIAL
 
 
 def describe() -> dict:
@@ -274,7 +284,12 @@ def routes(hub: GameHub) -> list[Route]:
             return JSONResponse({"error": explain(error)}, status_code=400)
         return JSONResponse(games_data(hub))
 
+    async def listings(request):
+        await hub.catalog.refresh(force=request.query_params.get("refresh") == "1")
+        return JSONResponse(hub.listings(), headers={"Cache-Control": "no-store"})
+
     return [
         Route("/settings", page), Route("/settings/data", data, methods=["GET", "POST"]),
         Route("/settings/games", games, methods=["GET", "POST"]),
+        Route("/settings/catalog", listings),
     ]

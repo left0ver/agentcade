@@ -10,6 +10,7 @@
   color-scheme: light dark;
   --bg: #ffffff; --panel: #f7f7f8; --border: #e4e4e7; --text: #1c1c1f; --muted: #777783;
   --hover: #f1f1f3; --accent: #2f62e8; --error: #c9302c; --ok: #19874a; --game: #0c8585;
+  --warn: #b26a00;
   --shadow: 0 6px 24px rgb(15 23 42 / .08);
   --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 }
@@ -17,6 +18,7 @@
   :root {
     --bg: #141416; --panel: #1a1a1d; --border: #2a2a2f; --text: #e6e6ea; --muted: #8b8b97;
     --hover: #202024; --accent: #7ea4ff; --error: #ff6f66; --ok: #4dc480; --game: #4fcfcf;
+    --warn: #f0b04f;
     --shadow: 0 6px 24px rgb(0 0 0 / .4);
   }
 }
@@ -58,6 +60,9 @@ h1 { margin: 0 0 8px; font-size: 22px; line-height: 30px; font-weight: 650; }
   padding: 0 7px; border-radius: 9px; font-size: 11px; line-height: 18px; color: var(--game);
   background: color-mix(in srgb, var(--game) 13%, transparent);
 }
+.kind.ok { color: var(--ok); background: color-mix(in srgb, var(--ok) 13%, transparent); }
+.kind.warn { color: var(--warn); background: color-mix(in srgb, var(--warn) 15%, transparent); }
+.kind.bad { color: var(--error); background: color-mix(in srgb, var(--error) 13%, transparent); }
 .state { margin-left: auto; font-size: 12px; line-height: 18px; color: var(--ok); text-align: right; }
 .state.problem { color: var(--error); }
 .card-body { padding: 6px 18px 16px; }
@@ -99,6 +104,7 @@ h2.section { margin: 36px 0 0; font-size: 17px; line-height: 26px; font-weight: 
 .game-title b { font-weight: 600; }
 .game-text { color: var(--muted); font-size: 13px; line-height: 20px; overflow-wrap: anywhere; }
 .game-text.error { color: var(--error); }
+.game-text.warn { color: var(--warn); }
 .game-actions { display: flex; gap: 6px; flex-shrink: 0; }
 .button:disabled { opacity: .5; cursor: default; }
 .button.danger { color: var(--error); }
@@ -116,6 +122,14 @@ h2.section { margin: 36px 0 0; font-size: 17px; line-height: 26px; font-weight: 
 .preview ul { margin: 8px 0 0; padding: 0; list-style: none; }
 .preview li { display: flex; gap: 8px; align-items: center; margin-top: 6px; }
 .preview .actions { display: flex; gap: 8px; margin-top: 14px; }
+.notice { margin-top: 10px; padding: 8px 12px; border-radius: 9px; font-size: 13px; line-height: 20px; }
+.notice.ok { color: var(--ok); background: color-mix(in srgb, var(--ok) 9%, transparent); }
+.notice.warn { color: var(--warn); background: color-mix(in srgb, var(--warn) 11%, transparent); }
+.notice.bad { color: var(--error); background: color-mix(in srgb, var(--error) 9%, transparent); }
+.discover { margin-top: 6px; padding-top: 12px; border-top: 1px solid var(--border); }
+.discover-head { display: flex; align-items: center; gap: 10px; }
+.discover-head b { font-weight: 600; }
+.discover-head .game-text { flex: 1; min-width: 0; }
 .games-message { margin-top: 10px; font-size: 13px; color: var(--muted); }
 .games-message.error { color: var(--error); }
 @media (max-width: 640px) {
@@ -142,8 +156,16 @@ h2.section { margin: 36px 0 0; font-size: 17px; line-height: 26px; font-weight: 
   <section class="card">
     <div class="games">
       <div id="games"></div>
+      <div class="discover">
+        <div class="discover-head">
+          <b>发现更多游戏</b>
+          <span class="game-text" id="catalog-state"></span>
+          <button class="button" id="catalog-refresh" type="button">刷新</button>
+        </div>
+        <div id="catalog"></div>
+      </div>
       <div class="add">
-        <input id="game-url" type="url" placeholder="粘贴远程游戏的地址，例如 https://example.com/my-game" spellcheck="false" autocomplete="off">
+        <input id="game-url" type="url" placeholder="也可以粘贴没有收录的游戏地址，例如 https://example.com/my-game" spellcheck="false" autocomplete="off">
         <button class="button" id="game-preview" type="button">查看</button>
       </div>
       <div id="game-confirm"></div>
@@ -271,6 +293,24 @@ $("save").addEventListener("click", async () => {
 
 // 游戏：列表、安装、停用、启用、卸载，每个操作马上生效。
 const STATES = { connected: "已连接", disabled: "已停用", waiting: "配置填好后连接" };
+// 远程游戏在游戏目录里的审核状态。
+const REVIEWS = {
+  reviewed: ["ok", "已审核"], changed: ["warn", "当前版本未经审核"],
+  unreviewed: ["warn", "未审核"], removed: ["bad", "已下架"],
+};
+
+function reviewBadge(review) {
+  const [kind, text] = REVIEWS[review.state];
+  return el("span", `kind ${kind}`, text);
+}
+
+// 当前版本和审核时不一样在哪里。
+function reviewChanges(review, version) {
+  const parts = [];
+  if (version && version !== review.version) parts.push(`现在是 ${version} 版，审核过的是 ${review.version} 版`);
+  if (review.extra.length) parts.push(`审核时没有申请：${review.extra.map((item) => item.label).join("；")}`);
+  return parts.join("；");
+}
 
 function gamesSay(text, kind) {
   $("games-message").className = `games-message ${kind || ""}`;
@@ -290,6 +330,8 @@ async function gameAction(body, done) {
     }
     gamesSay(done || "");
     if (data.games) renderGames(data);
+    // 装上或卸载之后，“发现更多游戏”里的“已安装”跟着变。
+    if (["install", "uninstall"].includes(body.action)) loadCatalog();
     return data;
   } catch {
     gamesSay("没有连上应用，请确认应用还在运行。", "error");
@@ -302,9 +344,15 @@ function gameRow(game) {
   const main = el("div", "game-main");
   const title = el("div", "game-title");
   title.append(el("b", "", game.name), el("span", "kind", game.source === "builtin" ? "内置" : game.host));
+  if (game.review) title.append(reviewBadge(game.review));
   if (game.playing) title.append(el("span", "kind", "正在玩"));
   main.append(title);
   if (game.summary) main.append(el("div", "game-text", game.summary));
+  if (game.review?.state === "removed") {
+    main.append(el("div", "game-text error", `已从游戏目录下架：${game.review.note}。建议卸载。`));
+  } else if (game.review?.state === "changed") {
+    main.append(el("div", "game-text warn", reviewChanges(game.review, game.version)));
+  }
   const state = game.state === "error" ? `连接失败：${game.error}` : STATES[game.state];
   main.append(el("div", game.state === "error" ? "game-text error" : "game-text", state));
   if (game.permissions.length) main.append(el("div", "game-text", `可以：${game.permissions.join("；")}`));
@@ -355,6 +403,18 @@ function renderPreview(preview) {
   const meta = [preview.version && `版本 ${preview.version}`, preview.author && `作者 ${preview.author}`].filter(Boolean);
   box.append(head);
   if (meta.length) box.append(el("div", "game-text", meta.join(" · ")));
+  const review = preview.review;
+  const extra = new Set(review.extra?.map((item) => item.name) || []);
+  if (review.state === "reviewed") {
+    box.append(el("div", "notice ok", `已审核：收录在游戏目录里，${review.reviewed_at} 审核过这个版本。`));
+  } else if (review.state === "changed") {
+    box.append(el("div", "notice warn",
+      `收录在游戏目录里，但当前版本没有经过审核：${reviewChanges(review, preview.version)}。`));
+  } else if (review.state === "unreviewed") {
+    box.append(el("div", "notice warn", "这个游戏没有收录在游戏目录里，没有经过审核。确认你信任它的作者再安装。"));
+  } else {
+    box.append(el("div", "notice bad", `这个游戏已经从游戏目录下架，不能安装：${review.note}`));
+  }
   box.append(el("div", "", preview.summary));
   if (preview.description && preview.description !== preview.summary) box.append(el("div", "game-text", preview.description));
   box.append(el("div", "game-text", "安装后它可以："));
@@ -367,7 +427,9 @@ function renderPreview(preview) {
     check.checked = capability.supported;
     check.disabled = !capability.supported;
     boxes.push([capability.name, check]);
-    item.append(check, el("span", "", capability.label + (capability.supported ? "" : "（机器人不支持）")));
+    const notes = [!capability.supported && "机器人不支持", extra.has(capability.name) && "审核时没有这项"]
+      .filter(Boolean);
+    item.append(check, el("span", "", capability.label + (notes.length ? `（${notes.join("，")}）` : "")));
     list.append(item);
   }
   const data = el("li");
@@ -388,12 +450,65 @@ function renderPreview(preview) {
   const cancel = el("button", "button", "取消");
   cancel.type = "button";
   cancel.onclick = () => { $("game-confirm").replaceChildren(); gamesSay(""); };
-  actions.append(install, cancel);
+  if (review.state !== "removed") actions.append(install);
+  actions.append(cancel);
   box.append(actions);
   $("game-confirm").replaceChildren(box);
   // 底部固定的保存栏可能挡住安装按钮，把确认内容滚到页面中间。
   box.scrollIntoView({ block: "center", behavior: "smooth" });
 }
+
+// 发现更多游戏：游戏目录里审核过的游戏，安装时和粘贴地址一样要确认权限。
+function catalogRow(listing) {
+  const row = el("div", "game");
+  const main = el("div", "game-main");
+  const title = el("div", "game-title");
+  title.append(el("b", "", listing.name), el("span", "kind", listing.host), el("span", "kind ok", "已审核"));
+  main.append(title, el("div", "game-text", listing.summary));
+  const meta = [`作者 ${listing.author}`, `版本 ${listing.version}`, `${listing.reviewed_at} 审核`];
+  main.append(el("div", "game-text", meta.join(" · ")));
+  if (listing.permissions.length) main.append(el("div", "game-text", `需要：${listing.permissions.join("；")}`));
+  const actions = el("div", "game-actions");
+  const install = el("button", "button", listing.installed ? "已安装" : "安装");
+  install.type = "button";
+  install.disabled = listing.installed || listing.taken;
+  if (listing.taken) install.title = `已经装了另一个 ID 为 ${listing.id} 的游戏，先卸载它`;
+  install.onclick = async () => {
+    $("game-confirm").replaceChildren();
+    const data = await gameAction({ action: "preview", url: listing.url });
+    if (data?.preview) renderPreview(data.preview);
+  };
+  actions.append(install);
+  row.append(main, actions);
+  return row;
+}
+
+function renderCatalog(data) {
+  const time = data.fetched_at && new Date(data.fetched_at * 1000).toLocaleString("zh-CN", { hour12: false });
+  const state = $("catalog-state");
+  state.className = data.error ? "game-text error" : "game-text";
+  if (data.error) state.textContent = data.fetched_at ? `${data.error}，下面是 ${time} 读到的内容` : data.error;
+  else state.textContent = data.fetched_at ? `更新于 ${time}` : "";
+  const rows = data.games.map(catalogRow);
+  if (!rows.length && data.fetched_at) rows.push(el("div", "game-text", "目录里还没有游戏。"));
+  $("catalog").replaceChildren(...rows);
+}
+
+async function loadCatalog(refresh) {
+  $("catalog-refresh").disabled = true;
+  if (refresh) $("catalog-state").textContent = "正在读取游戏目录…";
+  try {
+    const response = await fetch(`settings/catalog${refresh ? "?refresh=1" : ""}`, { cache: "no-store" });
+    renderCatalog(await response.json());
+  } catch {
+    $("catalog-state").className = "game-text error";
+    $("catalog-state").textContent = "没有连上应用，请确认应用还在运行。";
+  } finally {
+    $("catalog-refresh").disabled = false;
+  }
+}
+
+$("catalog-refresh").addEventListener("click", () => loadCatalog(true));
 
 $("game-preview").addEventListener("click", async () => {
   const url = $("game-url").value.trim();
@@ -410,6 +525,7 @@ async function loadGames() {
 
 load().catch(() => say("没有连上应用，请确认应用还在运行。", "error"));
 loadGames().catch(() => gamesSay("没有连上应用，请确认应用还在运行。", "error"));
+loadCatalog();
 </script>
 </body>
 </html>

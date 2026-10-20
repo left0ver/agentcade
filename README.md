@@ -114,15 +114,18 @@ uv run agentcade-game check src/games/turtle_soup   # 合规检查：名片和�
 
 ### 远程游戏
 
-游戏也可以单独部署在别的地方，别人的小懒在设置页面的“游戏”栏粘贴它的地址，确认它能让机器人做什么之后马上就能玩，不用改代码，也不用重启。`templates/remote-game/` 是一个完整的示例，带 Dockerfile 和部署到 Hugging Face Space 或自己服务器的说明。
+游戏也可以单独部署在别的地方，别人的小懒在设置页面的“游戏”栏从游戏目录里挑，或者粘贴它的地址，确认它能让机器人做什么之后马上就能玩，不用改代码，也不用重启。`templates/remote-game/` 是一个完整的示例，带 Dockerfile 和部署到 Hugging Face Space 或自己服务器的说明。
 
 | 命令 | 作用 |
 | --- | --- |
 | `agentcade-game serve <游戏目录> --port 7860` | 单独运行游戏服务。名片里的对外地址取 `--public-url`、环境变量 `PUBLIC_URL`，在 Hugging Face Space 上自动用 `SPACE_HOST`；配置先读目录里的 `.env`，再用同名环境变量覆盖 |
 | `agentcade-game check <地址或目录>` | 检查名片，再按开局、说一句话、结束真实跑一局，逐项列出问题 |
 | `agentcade-game chat <地址或目录>` | 文字模拟器 |
+| `agentcade-game catalog catalog/games.json` | 检查游戏目录的格式；加 `--online` 再读取每个游戏的名片，核对和条目一致 |
 
 一个服务可以同时给很多人玩，每一局按 `context_id` 分开，超过 30 分钟没有输入的局自动关闭，同时进行的局数默认最多 32 局（`--max-sessions`）。地址要用 https，本机和局域网地址可以用 http。已安装的远程游戏和停用的内置游戏记在用户目录的 `data/games.json` 里，升级应用不会丢；某个游戏连不上时只跳过它，其他游戏照常可玩。
+
+**游戏目录**：[`catalog/games.json`](catalog/games.json) 是审核过的远程游戏列表，设置页面在“发现更多游戏”里列出它们。小懒按地址认游戏：在目录里的标“已审核”；版本或者要的能力和审核时不一样，标“当前版本未经审核”；不在目录里的标“未审核”；已下架的标红并建议卸载，也不能再安装。目录在设置页面打开时读取，读不到时用上次缓存的内容，官方地址连不上会换 jsDelivr 镜像。开发者提交游戏、审核和下架的流程见 [`catalog/README.md`](catalog/README.md)。
 
 ## 发布
 

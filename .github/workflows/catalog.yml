@@ -1,0 +1,36 @@
+# 游戏目录 catalog/games.json 的检查：格式、ID 和地址不重复；PR 里新增或改过的条目还要读取游戏名片，核对和条目一致。
+name: 游戏目录
+
+on:
+  pull_request:
+    paths: ["catalog/**"]
+  push:
+    branches: [main]
+    paths: ["catalog/**"]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install .
+      - name: 检查目录
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.base_ref }}
+        run: |
+          if [ "$EVENT" = pull_request ]; then
+            git show "origin/$BASE:catalog/games.json" > "$RUNNER_TEMP/base.json" \
+              || echo '{"format": 1, "games": []}' > "$RUNNER_TEMP/base.json"
+            agentcade-game catalog catalog/games.json --online --base "$RUNNER_TEMP/base.json"
+          else
+            agentcade-game catalog catalog/games.json
+          fi

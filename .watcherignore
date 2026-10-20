@@ -4,3 +4,5 @@ scripts/
 懒羊羊tts.wav
 src/agentcade/publish.py
 templates/
+catalog/
+.github/

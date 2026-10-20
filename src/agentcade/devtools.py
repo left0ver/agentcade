@@ -3,6 +3,7 @@
     agentcade-game serve <游戏目录>      单独运行游戏服务，给别人的机器人连
     agentcade-game check <地址或目录>    合规检查：名片和完整的一局
     agentcade-game chat  <地址或目录>    文字模拟器：不用机器人，打字和游戏对话
+    agentcade-game catalog <目录文件>   检查游戏目录 catalog/games.json，CI 和审核时用
 
 游戏目录里要有 SKILL.md 和 agent.py（入口类 GameAgent）。配置先读目录里的 .env，
 再用同名环境变量覆盖，部署到服务器时把密钥放在环境变量里。
@@ -10,11 +11,12 @@
 import argparse
 import asyncio
 import importlib
+import json
 import logging
 import os
 import sys
 import time
-from contextlib import AsyncExitStack
+from contextlib import AsyncExitStack, suppress
 from pathlib import Path
 from typing import ClassVar
 from urllib.parse import urlsplit
@@ -25,11 +27,12 @@ from a2a.client import A2ACardResolver, ClientConfig, create_client
 from a2a.utils.errors import A2AError
 from pydantic import ValidationError
 
-from agentcade import registry
+from agentcade import catalog, registry
 from agentcade.config import SOURCE
 from agentcade.game_client import (
     GameConnection,
     check_interface,
+    discover,
     explain,
     protocol_skill,
     remote_descriptor,
@@ -217,6 +220,70 @@ async def check(args) -> int:
         if stale is not None and stale.session != "ended":
             report.add("fail", "发给不存在的一局时，应该回复这一局已经结束（session 为 ended）")
     print("\n" + ("有不合规的地方，修改后再检查一次。" if report.failed else "检查通过。"), flush=True)
+    if not report.failed and urlsplit(url).scheme == "https":
+        if descriptor.author:
+            print("\n想让别人在设置页面的“发现更多游戏”里看到它，把下面这一条加进 catalog/games.json "
+                  "的 games，再提一个 PR，见 catalog/README.md：", flush=True)
+            print(json.dumps(catalog.entry(url, descriptor), ensure_ascii=False, indent=2), flush=True)
+        else:
+            print("\n提交到游戏目录之前，先在 SKILL.md 里写上 author。", flush=True)
+    return 1 if report.failed else 0
+
+
+# ---------- catalog ----------
+
+async def verify_listing(listing, report, timeout) -> None:
+    """读取游戏名片，核对目录条目和名片一致。"""
+    async with httpx.AsyncClient(timeout=timeout, trust_env=False) as http:
+        try:
+            card = await A2ACardResolver(http, listing.url).get_agent_card()
+            check_interface(card, listing.url)
+            descriptor = remote_descriptor(card, protocol_skill(card))
+        except (*ERRORS, ValidationError) as error:
+            report.add("fail", f"{listing.id}：读取名片失败，{explain(error)}")
+            return
+    expected = {"ID": listing.id, "名称": listing.name, "简短介绍": listing.summary,
+                "版本": listing.version, "能力": sorted(listing.capabilities)}
+    actual = {"ID": descriptor.id, "名称": descriptor.name, "简短介绍": descriptor.summary,
+              "版本": descriptor.version, "能力": sorted(descriptor.required_capabilities)}
+    different = [key for key in expected if expected[key] != actual[key]]
+    if different:
+        report.add("fail", f"{listing.id}：条目和名片不一致，" + "；".join(
+            f"{key}条目里是 {expected[key]}，名片里是 {actual[key]}" for key in different))
+    else:
+        report.add("ok", f"{listing.id}：名片和条目一致（版本 {descriptor.version}）")
+
+
+async def check_catalog(args) -> int:
+    report = Report()
+    report.section("目录文件")
+    try:
+        data = json.loads(Path(args.file).read_text(encoding="utf-8"))
+    except (OSError, ValueError) as error:
+        report.add("fail", f"读不了 {args.file}：{error}")
+        return 1
+    problems = catalog.validate(data, {game.id for game in discover(SOURCE / "games")})
+    for problem in problems:
+        report.add("fail", problem)
+    if problems:
+        return 1
+    listed, _ = catalog.parse(data)
+    report.add("ok", f"格式正确，收录 {len(listed.games)} 个游戏")
+    if not args.online:
+        return 0
+    # 有改动前的目录时只核对新增和改过的条目，没有时核对全部没下架的条目。
+    before = {}
+    if args.base:
+        with suppress(OSError, ValueError):
+            old, _ = catalog.parse(json.loads(Path(args.base).read_text(encoding="utf-8")))
+            before = {listing.id: listing for listing in old.games}
+    changed = [listing for listing in listed.games
+               if listing.status == "listed" and before.get(listing.id) != listing]
+    report.section("名片")
+    if not changed:
+        report.add("ok", "没有新增或改过的游戏")
+    for listing in changed:
+        await verify_listing(listing, report, args.timeout)
     return 1 if report.failed else 0
 
 
@@ -288,6 +355,12 @@ def main() -> None:
         if name == "check":
             command.add_argument("--say", default="你好", help="开局后说的一句话")
 
+    listed = commands.add_parser("catalog", help="检查游戏目录文件")
+    listed.add_argument("file", help="目录文件，一般是 catalog/games.json")
+    listed.add_argument("--online", action="store_true", help="读取游戏名片，核对条目和名片一致")
+    listed.add_argument("--base", help="改动前的目录文件，只核对新增和改过的条目")
+    listed.add_argument("--timeout", type=float, default=60, help="读取每个名片最长等待的秒数")
+
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO if args.command == "serve" else logging.WARNING,
                         format="%(asctime)s %(levelname)s %(message)s")
@@ -296,6 +369,8 @@ def main() -> None:
             asyncio.run(serve(args))
         elif args.command == "check":
             sys.exit(asyncio.run(check(args)))
+        elif args.command == "catalog":
+            sys.exit(asyncio.run(check_catalog(args)))
         else:
             asyncio.run(chat(args))
     except KeyboardInterrupt:

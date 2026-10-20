@@ -42,7 +42,7 @@ agentcade-game serve riddle --port 7860  # 运行服务，小懒的设置页面�
 2. 把这个目录推到 Space 的仓库。
 3. 在 Space 的 Settings → Variables and secrets 里添加 Secret `LLM_API_KEY`，需要的话再加 `LLM_BASE_URL`、`LLM_MODEL_NAME`。
 4. 构建完成后，地址是 `https://<用户名>-<Space 名>.hf.space`。名片里的对外地址会自动用这个地址，不用设置 `PUBLIC_URL`。
-5. 运行 `agentcade-game check https://<用户名>-<Space 名>.hf.space`，通过后把地址发给用户。
+5. 运行 `agentcade-game check https://<用户名>-<Space 名>.hf.space`，通过后把地址发给用户，或者提交到游戏目录。
 
 免费的 Space 长时间没人访问会休眠，第一次连接要等它启动。
 
@@ -68,6 +68,12 @@ games.example.com {
 ```
 
 `PUBLIC_URL` 要和用户填写的地址完全一致，名片里的消息地址就是 `PUBLIC_URL` 加 `/a2a`。
+
+## 提交到游戏目录
+
+想让别人在小懒设置页面的“发现更多游戏”里直接看到它：`check` 全部通过后会打印一条目录条目，把它加进 [agentcade 仓库](https://github.com/left0ver/agentcade) 的 `catalog/games.json`，提一个 PR。提交要求和审核标准见仓库里的 `catalog/README.md`。
+
+游戏以后改了版本或者要的能力，用户那里会显示“当前版本未经审核”，要再提一次 PR 更新条目。
 
 ## 要求
 

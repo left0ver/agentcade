@@ -17,6 +17,7 @@ from pydantic import ValidationError
 
 import observability
 from agentcade import registry
+from agentcade.catalog import CatalogStore
 from agentcade.config import SOURCE
 from agentcade.game_server import serve_game
 from agentcade.protocol import (
@@ -168,8 +169,10 @@ class GameHub:
     主 Agent 用的 games 就是这里的同一个字典，改动在下一句话生效。
     """
 
-    def __init__(self, directory: Path = SOURCE / "games", path: Path = registry.PATH):
+    def __init__(self, directory: Path = SOURCE / "games", path: Path = registry.PATH,
+                 catalog: CatalogStore | None = None):
         self.directory, self.path = directory, path
+        self.catalog = catalog or CatalogStore()
         self.local = {game.id: game for game in discover(directory)}
         self.games: dict[str, GameConnection] = {}
         self.errors: dict[str, str] = {}
@@ -295,6 +298,8 @@ class GameHub:
             raise ValueError(f"游戏名片不合规：{explain(error)}") from error
         if descriptor.id in self.local or registry.load(self.path).get(descriptor.id):
             raise ValueError(f"已经有 ID 为 {descriptor.id} 的游戏了")
+        await self.catalog.refresh()
+        review = self.catalog.current().review(url, descriptor.version, descriptor.required_capabilities)
         return {
             "url": url, "id": descriptor.id, "name": descriptor.name, "summary": descriptor.summary,
             "description": descriptor.description, "version": descriptor.version,
@@ -303,12 +308,14 @@ class GameHub:
                 {"name": name, "label": registry.PERMISSIONS.get(name, name),
                  "supported": self.supports(name)}
                 for name in descriptor.required_capabilities
-            ],
+            ], "review": review,
         }
 
     async def install(self, url: str, granted: list[str]) -> str:
         async with self.lock:
             info = await self.preview(url)
+            if info["review"]["state"] == "removed":
+                raise ValueError(f"这个游戏已经从目录下架：{info['review']['note']}")
             declared = {item["name"] for item in info["capabilities"]}
             entry = registry.Entry(
                 id=info["id"], source="remote", url=info["url"], name=info["name"],
@@ -383,18 +390,42 @@ class GameHub:
             result.append(self.status(game_id, entries.enabled(game_id), {
                 "source": "builtin", "name": descriptor.name, "summary": descriptor.summary,
                 "capabilities": descriptor.required_capabilities,
-                "granted": descriptor.required_capabilities,
+                "granted": descriptor.required_capabilities, "review": None,
             }))
+        catalog = self.catalog.current()
         for entry in entries.remote():
             connection = self.games.get(entry.id)
             declared = connection.descriptor.required_capabilities if connection else entry.granted
+            # 没连上时不知道名片的版本和能力，只看目录里有没有、下没下架。
+            version = connection.descriptor.version if connection else None
             result.append(self.status(entry.id, entry.enabled, {
                 "source": "remote", "url": entry.url, "host": urlsplit(entry.url).hostname,
                 "name": connection.descriptor.name if connection else entry.name or entry.id,
                 "summary": connection.descriptor.summary if connection else entry.summary or "",
-                "capabilities": declared, "granted": entry.granted,
+                "capabilities": declared, "granted": entry.granted, "version": version,
+                "review": catalog.review(entry.url, version, declared if connection else None),
             }))
         return result
+
+    def listings(self) -> dict:
+        """设置页面“发现更多游戏”的内容：目录里没下架的游戏，标出已经装了的。"""
+        entries = registry.load(self.path)
+        installed = {entry.url for entry in entries.remote()}
+        taken = {*self.local, *(entry.id for entry in entries.games)}
+        games = []
+        for listing in self.catalog.current().games:
+            if listing.status != "listed":
+                continue
+            games.append({
+                **listing.model_dump(mode="json", exclude={"status", "note"}),
+                "host": urlsplit(listing.url).hostname, "installed": listing.url in installed,
+                # 装了另一个同 ID 的游戏（比如粘贴地址装的），这个就装不了。
+                "taken": listing.url not in installed and listing.id in taken,
+                "permissions": [registry.PERMISSIONS.get(name, name) for name in listing.capabilities],
+            })
+        store = self.catalog
+        return {"games": games, "source": store.source, "fetched_at": store.fetched_at,
+                "error": store.error}
 
     def status(self, game_id: str, enabled: bool, details: dict) -> dict:
         if not enabled:
