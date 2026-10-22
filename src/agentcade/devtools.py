@@ -47,6 +47,7 @@ from agentcade.game_client import (
 from agentcade.game_server import MAX_SESSIONS, serve_game
 from agentcade.main_agent import MainAgent, greeting
 from agentcade.protocol import CAPABILITIES, GameInput
+from observability.events import encode
 
 # 开局之后多久还没有说第一句话，就建议先说一句“稍等”。
 FIRST_REPLY_SECONDS = 8
@@ -110,6 +111,42 @@ def describe(directive) -> str:
     if directive.type == "progress":
         return f"显示进度 {directive.seconds} 秒"
     return "恢复待机"
+
+
+class Tracer:
+    """--trace：游戏 Agent 每一轮的提示词、工具调用和结果，一边发生一边打印。
+
+    系统提示词每个游戏只完整打印一次，之后只打印当前状态。只看得到在这个进程里运行的游戏，
+    也就是本地目录和内置游戏；地址上的游戏在它自己的服务器上运行。
+    """
+
+    NAMES: ClassVar[dict[str, str]] = {"main": "主 Agent"}
+
+    def __init__(self):
+        self.shown: set[str] = set()
+
+    @staticmethod
+    def dump(value) -> str:
+        return json.dumps(value, ensure_ascii=False, default=encode)
+
+    def __call__(self, record) -> None:
+        kind, payload = record["type"], record["payload"]
+        actor = self.NAMES.get(record["actor"], record["actor"])
+        lines = []
+        if kind == "agent.prompt":
+            if actor not in self.shown:
+                self.shown.add(actor)
+                lines += [f"{actor} 的系统提示词：", *(f"  {line}" for line in payload["system"].splitlines())]
+            else:
+                lines.append(f"{actor} 当前状态 {self.dump(payload['state'])}")
+            lines.append(f"{actor} 收到 {self.dump(payload['message'])}")
+        elif kind == "tool.call":
+            lines.append(f"{actor} 调用 {payload['tool']} {self.dump(payload['arguments'])}")
+        elif kind == "tool.result":
+            outcome = self.dump(payload["result"]) if payload["ok"] else payload.get("error")
+            lines.append(f"{actor} {payload['tool']} → {outcome}（{payload['duration_ms']} 毫秒）")
+        for line in lines:
+            print(f"  ┆ {line}", flush=True)
 
 
 # ---------- serve ----------
@@ -304,6 +341,10 @@ async def check_catalog(args) -> int:
 # ---------- chat ----------
 
 async def chat(args) -> None:
+    if args.trace:
+        observability.bus.listeners.append(Tracer())
+        if not Path(args.target).is_dir():
+            print("（--trace 只看得到本地目录里的游戏，这个游戏在它自己的服务器上运行）", flush=True)
     async with AsyncExitStack() as stack:
         url = await open_target(stack, args.target)
         connection, _ = await connect(stack, url, args.timeout)
@@ -404,6 +445,8 @@ async def settle(agent) -> None:
 
 
 async def play(args) -> None:
+    if args.trace:
+        observability.bus.listeners.append(Tracer())
     async with AsyncExitStack() as stack:
         hub = GameHub()
         # 设备指令都显示成文字，机器人的能力全部算作支持。
@@ -476,11 +519,16 @@ def main() -> None:
         command.add_argument("--timeout", type=float, default=300, help="每个请求最长等待的秒数")
         if name == "check":
             command.add_argument("--say", default="你好", help="开局后说的一句话")
+        else:
+            command.add_argument("--trace", action="store_true",
+                                 help="打印游戏的提示词、工具调用和结果，只对本地目录里的游戏有效")
 
     whole = commands.add_parser("play", help="整条链路的文字模式：经过主 Agent 和所有游戏")
     whole.add_argument("--game", action="append", default=[],
                        help="另外接入的游戏地址或者本地目录，可以写多次；和已有游戏同名时代替它")
     whole.add_argument("--timeout", type=float, default=300, help="每个请求最长等待的秒数")
+    whole.add_argument("--trace", action="store_true",
+                       help="打印主 Agent 的工具调用，以及内置游戏和本地目录里游戏的提示词、工具调用和结果")
 
     listed = commands.add_parser("catalog", help="检查游戏目录文件")
     listed.add_argument("file", help="目录文件，一般是 catalog/games.json")

@@ -1,11 +1,14 @@
 import asyncio
 import json
+import logging
 import time
 from collections import OrderedDict, deque
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
 from uuid import uuid4
+
+logger = logging.getLogger(__name__)
 
 SCOPE = {
     "actor": ContextVar("observability_actor", default="main"),
@@ -48,6 +51,8 @@ class EventBus:
         # 只反映当前情况的状态（例如正在听到的话），不进入事件记录，页面连接时拿到最新值。
         self.live: dict = {}
         self.live_version = 0
+        # 调试工具（例如 agentcade-game chat --trace）注册的监听函数，每条事件发生时同步调用。
+        self.listeners: list = []
 
     def emit(self, kind, payload):
         self.seq += 1
@@ -67,6 +72,15 @@ class EventBus:
             data = json.dumps(record, ensure_ascii=False)
         self.events.append(Event(self.seq, data))
         self.wake()
+        self.notify(record)
+
+    def notify(self, record):
+        for listener in list(self.listeners):
+            try:
+                listener(record)
+            except Exception:
+                # 调试输出出错不能影响语音和游戏流程。
+                logger.warning("事件监听函数出错", exc_info=True)
 
     def publish(self, **values):
         self.live.update(values)
@@ -123,6 +137,19 @@ def turn(identifier):
 def reply(text, role="assistant"):
     """记录主 Agent 将要播报的聊天或游戏回复，role 区分是它自己说的还是游戏说的。"""
     bus.emit("agent.reply", {"text": text, "role": role})
+
+
+def prompt(system, state, message):
+    """游戏 Agent 这一轮发给大模型的系统提示词、当前状态和本轮消息。
+
+    内容较长，只交给监听函数（--trace），不进事件记录。
+    """
+    if bus.listeners:
+        bus.notify({
+            "type": "agent.prompt", "time": time.time(),
+            "payload": {"system": system, "state": state, "message": message},
+            **{name: variable.get() for name, variable in SCOPE.items()},
+        })
 
 
 def user_speaking(text):

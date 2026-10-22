@@ -211,6 +211,7 @@ class SkillAgent:
                 event["result"] = result
             if turn.required:
                 event["must_say"] = [text for text, _ in turn.required]
+            observability.prompt(messages[0]["content"], self.state(), event)
             messages.append({"role": "user", "content": json.dumps(event, ensure_ascii=False)})
             text = (await self.provider.run_tools(messages, registry)).strip()[:REPLY_LIMIT]
             if not text:

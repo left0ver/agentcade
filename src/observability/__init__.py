@@ -3,6 +3,7 @@ from observability.events import (
     bus,
     describe,
     game_request,
+    prompt,
     reply,
     tool_call,
     turn,
@@ -11,6 +12,6 @@ from observability.events import (
 )
 
 __all__ = [
-    "a2a_request", "bus", "describe", "game_request", "reply", "tool_call", "turn", "user_input",
+    "a2a_request", "bus", "describe", "game_request", "prompt", "reply", "tool_call", "turn", "user_input",
     "user_speaking",
 ]
