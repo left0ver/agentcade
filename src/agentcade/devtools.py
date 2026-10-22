@@ -1,7 +1,7 @@
 """开发游戏用的命令行工具：
 
     agentcade-game serve <游戏目录>      单独运行游戏服务，给别人的机器人连
-    agentcade-game check <地址或目录>    合规检查：名片和完整的一局
+    agentcade-game check <地址或目录>    合规检查：名片、SKILL.md 和工具、完整的一局
     agentcade-game chat  <地址或目录>    文字模拟器：不用机器人，打字和游戏对话
     agentcade-game play  [--game ...]    整条链路的文字模式：经过主 Agent 和所有游戏，不用机器人
     agentcade-game catalog <目录文件>   检查游戏目录 catalog/games.json，CI 和审核时用
@@ -15,9 +15,11 @@ import importlib
 import json
 import logging
 import os
+import re
 import sys
 import time
 from contextlib import AsyncExitStack, suppress
+from difflib import get_close_matches
 from pathlib import Path
 from types import SimpleNamespace
 from typing import ClassVar
@@ -47,12 +49,17 @@ from agentcade.game_client import (
 from agentcade.game_server import MAX_SESSIONS, serve_game
 from agentcade.main_agent import MainAgent, greeting
 from agentcade.protocol import CAPABILITIES, GameInput
+from agentcade.skill_agent import SkillAgent
+from agentcade.tools import collect_tools
 from observability.events import encode
 
 # 开局之后多久还没有说第一句话，就建议先说一句“稍等”。
 FIRST_REPLY_SECONDS = 8
 # 连接和收发消息时可能遇到的错误，检查报告里按一句话原因显示。
 ERRORS = (A2AError, httpx.HTTPError, ValueError, RuntimeError, TimeoutError)
+# SKILL.md 里写成“调用 工具名”的地方，check 核对这个工具存在。
+TOOL_CALL = re.compile(r"调用\s*`?([A-Za-z_][A-Za-z0-9_-]*)")
+IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_-]*")
 
 
 def load_factory(directory: Path):
@@ -63,7 +70,8 @@ def load_factory(directory: Path):
     if directory.parent == SOURCE / "games":
         module = f"games.{directory.name}.agent"
     else:
-        sys.path.insert(0, str(directory.parent))
+        if str(directory.parent) not in sys.path:
+            sys.path.insert(0, str(directory.parent))
         module = f"{directory.name}.agent"
     return importlib.import_module(module).GameAgent
 
@@ -179,6 +187,27 @@ class Report:
         print(f"  {self.SYMBOLS[level]} {text}", flush=True)
 
 
+def check_tools(factory, report: Report) -> None:
+    """核对 SKILL.md 正文和 @tool 声明的工具：让大模型调用的工具要存在，每个工具都要提到。"""
+    builtin = {spec.name for spec in collect_tools(SkillAgent)}
+    names = [spec.name for spec in factory.tool_specs]
+    instructions = factory.skill.instructions
+    unknown = [name for name in dict.fromkeys(TOOL_CALL.findall(instructions)) if name not in names]
+    for name in unknown:
+        guess = get_close_matches(name, names, n=1)
+        report.add("fail", f"SKILL.md 让大模型调用 {name}，但没有这个工具"
+                           + (f"，是不是 {guess[0]}？" if guess else ""))
+    mentioned = set(IDENTIFIER.findall(instructions))
+    games = [name for name in names if name not in builtin]
+    unmentioned = [name for name in games if name not in mentioned]
+    if unmentioned:
+        report.add("warn", f"工具 {'、'.join(unmentioned)} 在 SKILL.md 里没有提到，"
+                           "写清楚什么时候调用它、按结果怎么说，大模型才会用好它")
+    if not unknown and not unmentioned:
+        report.add("ok", f"SKILL.md 提到了全部 {len(games)} 个工具：{'、'.join(games)}" if games
+                   else "游戏没有声明工具")
+
+
 async def exchange(connection, context_id, request, report, label, timeout):
     """发一条请求，记录每条回复的时间，检查回复的内容和设备指令。"""
     started = time.monotonic()
@@ -247,6 +276,11 @@ async def check(args) -> int:
             report.add("warn", f"声明了核心不认识的能力 {'、'.join(unknown)}，安装时会按原名显示")
         if not descriptor.author:
             report.add("warn", "名片里没有作者，用户安装时看不到是谁做的；可以在 SKILL.md 里写 author")
+
+        # 地址上的游戏看不到代码，只核对本地目录里的游戏。
+        if Path(args.target).is_dir():
+            report.section("SKILL.md 和工具")
+            check_tools(load_factory(Path(args.target)), report)
 
         report.section("一局游戏")
         context_id = uuid4().hex
