@@ -12,6 +12,8 @@ pinned: false
 
 一个可以单独部署的 Agentcade 游戏。部署好之后，任何人在小懒的设置页面里粘贴它的地址，确认权限，就能对机器人说“我想玩猜谜语”。
 
+怎么写游戏、怎么测试、有哪些要求，见[游戏开发指南](https://github.com/left0ver/agentcade/blob/main/docs/game-development.md)。
+
 开头那几行是 Hugging Face Space 的配置，部署到别的地方时可以删掉。
 
 ## 文件
