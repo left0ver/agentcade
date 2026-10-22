@@ -311,15 +311,6 @@ a.button { display: inline-flex; align-items: center; color: inherit; text-decor
   font-size: 13px; line-height: 20px; color: var(--muted);
 }
 .act b { font-weight: 600; color: var(--text); }
-.face polyline { fill: none; stroke: #fff; stroke-linecap: round; stroke-linejoin: round; }
-.avatar.nod { animation: nod .9s ease-in-out; }
-.avatar.shake { animation: shake .9s ease-in-out; }
-.msg.bot:hover .avatar.nod { animation: nod-again .9s ease-in-out; }
-.msg.bot:hover .avatar.shake { animation: shake-again .9s ease-in-out; }
-@keyframes nod { 20%, 60% { transform: translateY(4px) rotate(4deg); } 40%, 80% { transform: none; } }
-@keyframes nod-again { 20%, 60% { transform: translateY(4px) rotate(4deg); } 40%, 80% { transform: none; } }
-@keyframes shake { 15%, 55% { transform: translateX(-4px) rotate(-7deg); } 35%, 75% { transform: translateX(4px) rotate(7deg); } }
-@keyframes shake-again { 15%, 55% { transform: translateX(-4px) rotate(-7deg); } 35%, 75% { transform: translateX(4px) rotate(7deg); } }
 .sketch { margin: 4px 0; }
 .sketch .drawing { width: 220px; height: 220px; border-radius: 18px; box-shadow: var(--shadow); }
 .sketch figcaption { margin-top: 6px; font-size: 12px; line-height: 18px; color: var(--muted); }
@@ -457,15 +448,25 @@ function resultText(result) {
   return parts.length ? parts.join(" · ") : short(JSON.stringify(result));
 }
 
-// 游戏回复里的设备指令，按顺序写成简短的中文。
+// 游戏回复里的设备指令是机器人 SDK 调用，写成方法名，连续相同的合并成“×次数”。
 function directivesText(directives) {
-  return (directives || []).map((directive) => ({
-    gesture: { nod: "点头", shake_head: "摇头" }[directive.name],
-    expression: { happy: "开心", sorry: "抱歉" }[directive.name],
-    draw: `画图 ${directive.paths?.length ?? 0} 步`,
-    progress: `显示进度 ${directive.seconds} 秒`,
-    clear: "恢复待机",
-  }[directive.type] || directive.type)).join("、");
+  const groups = [];
+  for (const { call } of directives || []) {
+    const last = groups[groups.length - 1];
+    if (last?.call === call) last.count += 1;
+    else groups.push({ call, count: 1 });
+  }
+  return groups.map(({ call, count }) => (count > 1 ? `${call} ×${count}` : call)).join("、");
+}
+
+// 一次 SDK 调用写成调用形式；长字符串（例如矢量图案）只显示长度并排在前面，参数多时只显示几个。
+function callText(call, limit = 4) {
+  const long = (value) => typeof value === "string" && value.length > 40;
+  const brief = (value) => (long(value) ? `<${value.length} 字>` : JSON.stringify(value));
+  const named = Object.entries(call.kwargs || {}).sort(([, a], [, b]) => long(b) - long(a));
+  let parts = [...(call.args || []).map(brief), ...named.map(([name, value]) => `${name}=${brief(value)}`)];
+  if (parts.length > limit) parts = [...parts.slice(0, limit), `… 共 ${parts.length} 个参数`];
+  return `${call.call}(${parts.join(", ")})`;
 }
 
 function exchangeText(data) {
@@ -484,9 +485,8 @@ function summary(row) {
   if (row.kind === "user" || row.kind === "reply") return [[data.text, ""]];
   if (row.kind === "device") {
     const output = data.output;
-    const parts = [output.text, output.paths?.length ? "绘制图案" : "", output.expression,
-      output.gesture, output.clear ? "清屏" : "", output.progress_seconds ? "显示进度" : ""].filter(Boolean);
-    return [[parts.join(" · "), ""], [data.error ? ` · ${data.error}` : "", "err"]];
+    const text = output.text || (output.call ? callText(output.call) : output.reset ? "复位游戏用过的设备" : "");
+    return [[text, ""], [data.error ? ` · ${data.error}` : "", "err"]];
   }
   if (row.kind === "a2a-in") return exchangeText(data);
   if (row.kind === "a2a-out") {
@@ -714,8 +714,8 @@ const chat = {
   waiting: new Map(), hearing: "", online: false, follow: true, game: "",
 };
 const SVG = "http://www.w3.org/2000/svg";
-// 小懒的头像，以及头像里那块圆形屏幕的位置和底色（按头像文件 512 的画布算），表情画在这块屏幕上。
-const AVATAR = { file: "assets/avatar.svg", x: 256, y: 258.8, r: 109, screen: "#14141C" };
+// 小懒的头像。
+const AVATAR = { file: "assets/avatar.svg" };
 const seconds = (value) => `${value.toFixed(1)} 秒`;
 
 function symbol(id, className) {
@@ -964,66 +964,45 @@ function brief(value) {
   return text === "()" ? "" : text;
 }
 
-function face(hex) {
-  // 头像里有一块圆形屏幕：把机器人当时显示的表情画在这块屏幕上，盖住原来的眼睛。
-  const strokes = decodeVector(hex);
-  if (!strokes) return null;
-  const points = strokes.flatMap((stroke) => stroke.points);
-  const [xs, ys] = [points.map((point) => point[0]), points.map((point) => point[1])];
-  const [left, top] = [Math.min(...xs), Math.min(...ys)];
-  const [width, height] = [Math.max(...xs) - left, Math.max(...ys) - top];
-  // 表情缩放到占屏幕的七成多，线条加粗到小尺寸下也看得清。
-  const scale = AVATAR.r * 1.5 / Math.max(width, height, 1);
-  const node = document.createElementNS(SVG, "svg");
-  node.setAttribute("viewBox", "0 0 512 512");
-  node.setAttribute("class", "avatar face");
-  const picture = document.createElementNS(SVG, "image");
-  picture.setAttribute("href", AVATAR.file);
-  picture.setAttribute("width", 512);
-  picture.setAttribute("height", 512);
-  const screen = document.createElementNS(SVG, "circle");
-  for (const [name, value] of [["cx", AVATAR.x], ["cy", AVATAR.y], ["r", AVATAR.r], ["fill", AVATAR.screen]]) {
-    screen.setAttribute(name, value);
-  }
-  const group = document.createElementNS(SVG, "g");
-  group.setAttribute("transform", `translate(${AVATAR.x} ${AVATAR.y}) scale(${scale}) `
-    + `translate(${-(left + width / 2)} ${-(top + height / 2)})`);
-  for (const stroke of strokes) {
-    const line = document.createElementNS(SVG, "polyline");
-    const dots = stroke.points.length === 1 ? [stroke.points[0], stroke.points[0]] : stroke.points;
-    line.setAttribute("points", dots.map((point) => point.join(",")).join(" "));
-    line.setAttribute("stroke-width", Math.max(stroke.width, 20 / scale));
-    group.append(line);
-  }
-  node.append(picture, screen, group);
-  return node;
+// 设备输出执行完才有记录，这时排在它后面的话可能已经显示出来了。插到这条消息里还没说完的话前面，
+// 和机器人实际的顺序一致：输出按顺序执行，执行完的设备输出一定在还没说完的话之前。
+function devicePlace(event) {
+  const message = botMessage(event);
+  const anchor = chat.unspoken.find((item) => message.flow.contains(item.node))?.node || null;
+  return { message, anchor, previous: anchor ? anchor.previousElementSibling : message.flow.lastElementChild };
 }
 
-function reaction(event) {
-  // 这条消息的头像换上机器人当时的表情并做一次点头或摇头，正文里用一个小框说明它做了什么。
-  const output = event.payload.output;
-  const done = event.payload.completed;
-  const parts = [
-    // 没有对应说法的新动作和新表情直接显示它的名字，页面不用跟着改。
-    { nod: "点了点头", shake_head: "摇了摇头" }[output.gesture] || output.gesture,
-    { happy: "很开心", sorry: "有点抱歉" }[output.expression] || output.expression,
-  ].filter(Boolean);
-  const node = el("div", "act");
-  node.append(el("b", "", "小懒"), el("span", "", parts.join("，") + (done ? "" : "（没有做成）")));
-  const message = flowAppend(event, node);
-  if (!done) return;
-  const avatar = (event.payload.face && face(event.payload.face)) || message.avatar;
-  if (output.gesture) avatar.classList.add({ nod: "nod", shake_head: "shake" }[output.gesture]);
-  message.avatar.replaceWith(avatar);
-  message.avatar = avatar;
+function devicePut(place, node) {
+  if (place.anchor) place.anchor.before(node);
+  else place.message.flow.append(node);
+  chatFollow();
 }
 
-function sketch(event) {
-  const paths = event.payload.output.paths;
-  const figure = drawing(paths[paths.length - 1], `小懒在屏幕上画了一幅画，共 ${paths.length} 笔`);
+function screen(event, hex) {
+  // 屏幕上的图案（进度条、画、表情）画在同一张图里，连续的更新只换这张图。
+  const figure = drawing(hex, "小懒的屏幕");
   if (!figure) return;
   figure.className = "sketch";
-  flowAppend(event, figure);
+  const place = devicePlace(event);
+  if (place.previous?.classList.contains("sketch")) place.previous.replaceWith(figure);
+  else devicePut(place, figure);
+}
+
+function act(event) {
+  // 动作、灯光、动画这类调用写成一行，连续相同的调用合并计数。
+  const { output, completed, error } = event.payload;
+  const name = output.call.call;
+  const place = devicePlace(event);
+  const last = place.previous;
+  if (completed && last?.dataset.call === name) {
+    last.dataset.count = Number(last.dataset.count) + 1;
+    last.lastElementChild.textContent = `${name} ×${last.dataset.count}`;
+    return;
+  }
+  const node = el("div", "act");
+  if (completed) Object.assign(node.dataset, { call: name, count: 1 });
+  node.append(el("b", "", "小懒"), el("span", "", completed ? callText(output.call) : `${name} 没有做成：${error || ""}`));
+  devicePut(place, node);
 }
 
 const chatHandlers = {
@@ -1069,15 +1048,18 @@ const chatHandlers = {
     const payload = event.payload;
     const output = payload.output;
     if (output.text) return spokenOutput(event);
-    if (output.expression || output.gesture) return reaction(event);
-    // 游戏展示题目时带着完整的作画步骤；说完话把屏幕恢复成图案的记录由主 Agent 这边发出。
-    if (output.paths?.length && event.actor !== "main" && payload.completed) return sketch(event);
-    // 说完话之后恢复画面属于收尾，成功时只在轨迹里记录。
-    const name = output.progress_seconds ? "屏幕显示进度" : output.paths?.length ? "屏幕显示图案" : "屏幕恢复待机";
-    if (payload.completed && !output.progress_seconds) return;
+    if (output.call) {
+      const path = output.call.kwargs?.custom_vector_path;
+      if (path && payload.completed) return screen(event, path);
+      // 回到待机眼睛这类不带图案的屏幕调用只在轨迹里记录。
+      if (output.call.call.startsWith("expression_runtime.") && payload.completed) return;
+      return act(event);
+    }
+    // 一局结束后的复位属于收尾，成功时只在轨迹里记录。
+    if (payload.completed) return;
     addStep(event, {
-      kind: "device", status: payload.completed ? "ok" : outcome(payload), name,
-      result: payload.completed || payload.cancelled ? "" : payload.error,
+      kind: "device", status: outcome(payload), name: "复位游戏用过的设备",
+      result: payload.cancelled ? "" : payload.error,
     });
   },
 };
@@ -1211,10 +1193,8 @@ function drawing(hex, caption) {
 function drawings(outputs) {
   const figures = [];
   for (const output of outputs || []) {
-    if (output.paths?.length) {
-      figures.push(drawing(output.paths[output.paths.length - 1], `图案，共 ${output.paths.length} 笔，逐笔显示`));
-    }
-    if (output.restore_path) figures.push(drawing(output.restore_path, "反馈表情之后恢复显示的图案"));
+    const path = output.call?.kwargs?.custom_vector_path;
+    if (path) figures.push(drawing(path, "屏幕上的图案"));
   }
   const node = el("div", "drawings");
   node.append(...figures.filter(Boolean));

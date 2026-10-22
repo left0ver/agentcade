@@ -3,13 +3,14 @@ import json
 import logging
 import unicodedata
 from collections.abc import Awaitable, Callable
-from typing import Annotated, Literal
+from typing import Annotated
 
 from pydantic import Field
 
 import observability
-from agentcade.protocol import Clear, Directive, Expression, GameInput, GameReply, Gesture
+from agentcade.protocol import GameInput, GameReply, SdkCall
 from agentcade.providers import OpenAIProvider
+from agentcade.robot_calls import RobotProxy
 from agentcade.skill import Skill
 from agentcade.tools import TURN_PARAMETER, Tool, ToolRegistry, ToolSpec, collect_tools, tool
 
@@ -79,10 +80,6 @@ class Turn:
         """
         self.required.append((text, fallback or text))
 
-    async def act(self, *directives: Directive) -> None:
-        """立刻发出设备指令，由主 Agent 按顺序交给机器人执行；不等执行完成。"""
-        await self.emit(GameReply(directives=list(directives)))
-
     def end_session(self) -> None:
         self.ended = True
 
@@ -127,21 +124,22 @@ class SkillAgent:
         """结束时在大模型之前调用，例如统计得分、公布没揭晓的答案；返回值作为 result 交给大模型。"""
         return None
 
-    async def act(self, *directives: Directive) -> None:
-        """在当前这一轮里发出设备指令，例如画图、显示进度、点头。"""
+    @property
+    def robot(self) -> RobotProxy:
+        """机器人：写法和 SDK 一样，例如 await self.robot.lights.set_color("#00FF00")。
+
+        每次调用作为设备指令发给主 Agent，由它检查后在机器人上按顺序执行，不等执行完成；
+        只能在处理请求期间调用。一局结束后主 Agent 会把灯光、动作和屏幕复位。
+        """
+        return RobotProxy(self.send_call)
+
+    async def send_call(self, call: SdkCall) -> None:
         if self.turn is None:
             raise RuntimeError("设备指令只能在处理请求期间发出")
-        await self.turn.act(*directives)
-
-    async def react(self, expression: Literal["happy", "sorry"],
-                    gesture: Literal["nod", "shake_head"]) -> None:
-        """对用户刚才的回答做出表情和动作。立刻开始，不等动作做完；表情留到接下来这句话说完。"""
-        await self.act(Expression(name=expression), Gesture(name=gesture))
+        await self.turn.emit(GameReply(directives=[call]))
 
     async def conclude(self, turn: Turn, text: str) -> GameReply:
-        # 本局结束后屏幕回到待机画面，输出模块等这句话说完再换。
-        return GameReply(text=text, directives=[Clear()] if turn.ended else [],
-                         session="ended" if turn.ended else "active")
+        return GameReply(text=text, session="ended" if turn.ended else "active")
 
     def system_prompt(self) -> str:
         return (

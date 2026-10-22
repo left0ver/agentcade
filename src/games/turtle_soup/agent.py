@@ -3,7 +3,7 @@ import logging
 import time
 from pathlib import Path
 
-from agentcade.protocol import Gesture
+from agentcade import effects
 from agentcade.skill import Skill
 from agentcade.skill_agent import SkillAgent
 from agentcade.tools import tool
@@ -165,7 +165,7 @@ class GameAgent(SkillAgent):
         turn.judged = True
         self.questions += 1
         if answer in GESTURES:
-            await self.act(Gesture(name=GESTURES[answer]))
+            await effects.gesture(self.robot, GESTURES[answer])
         return {"answer": answer, **self.state()}
 
     @tool("判断用户这一轮说出的推理有没有猜中汤底（直接读取用户原话），结果为 solved、partial、"
@@ -180,10 +180,10 @@ class GameAgent(SkillAgent):
         turn.judged = True
         if verdict == "solved":
             self.solved += 1
-            await self.react("happy", "nod")
+            await effects.react(self.robot, "happy", "nod")
             return {"verdict": verdict, **self.reveal(turn, "solved")}
         if verdict == "wrong":
-            await self.act(Gesture(name="shake_head"))
+            await effects.gesture(self.robot, "shake_head")
         return {"verdict": verdict, **self.state()}
 
     @tool("取得这道题的下一条提示，每题三条。")

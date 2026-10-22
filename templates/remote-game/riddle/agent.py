@@ -1,13 +1,14 @@
 """猜谜语：一个可以单独部署的示例游戏。
 
 谜语和判断都写在代码里，主持交给大模型；猜对时点头并在屏幕上画一颗星星，猜错时摇头。
+机器人用 self.robot 控制，写法和机器人 SDK 一样；agentcade.effects 里有点头、画图这些常用效果。
 改成你自己的游戏时，保留 GameAgent 的结构，换掉题目、工具和 SKILL.md。
 """
 import math
 import random
 from pathlib import Path
 
-from agentcade.protocol import Draw, Gesture
+from agentcade import effects
 from agentcade.skill import Skill
 from agentcade.skill_agent import SkillAgent
 from agentcade.tools import tool
@@ -84,9 +85,10 @@ class GameAgent(SkillAgent):
         # 判定用 turn.text，也就是用户原话，不让大模型转述或者替用户纠正。
         if any(answer in turn.text for answer in self.riddle[1]):
             self.solved += 1
-            await self.act(Gesture(name="nod"), Draw(paths=star()))
+            await effects.gesture(self.robot, "nod")
+            await effects.draw(self.robot, star())
             return {"correct": True, "answer": self.reveal(turn), **self.state()}
-        await self.act(Gesture(name="shake_head"))
+        await effects.gesture(self.robot, "shake_head")
         return {"correct": False}
 
     @tool("取得当前谜语的提示。")

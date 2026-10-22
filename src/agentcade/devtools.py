@@ -48,7 +48,9 @@ from agentcade.game_client import (
 )
 from agentcade.game_server import MAX_SESSIONS, serve_game
 from agentcade.main_agent import MainAgent, greeting
-from agentcade.protocol import CAPABILITIES, GameInput
+from agentcade.protocol import GameInput
+from agentcade.robot_calls import SDK_CALLS, describe_call
+from agentcade.robot_calls import problem as call_problem
 from agentcade.skill_agent import SkillAgent
 from agentcade.tools import collect_tools
 from observability.events import encode
@@ -108,17 +110,9 @@ async def connect(stack: AsyncExitStack, url: str, timeout: float):
     return GameConnection(descriptor, client, descriptor.required_capabilities), card
 
 
-def describe(directive) -> str:
-    """设备指令写成简短的中文，模拟器和检查报告里显示。"""
-    if directive.type == "gesture":
-        return {"nod": "点头", "shake_head": "摇头"}[directive.name]
-    if directive.type == "expression":
-        return {"happy": "开心", "sorry": "抱歉"}[directive.name]
-    if directive.type == "draw":
-        return f"画图 {len(directive.paths)} 步"
-    if directive.type == "progress":
-        return f"显示进度 {directive.seconds} 秒"
-    return "恢复待机"
+def describe(call) -> str:
+    """设备指令写成 SDK 的调用形式，参数多时只显示几个，模拟器和检查报告里显示。"""
+    return describe_call(call, limit=4)
 
 
 class Tracer:
@@ -227,17 +221,21 @@ async def exchange(connection, context_id, request, report, label, timeout):
     spoken = next((elapsed for elapsed, reply in replies if reply.text), None)
     report.add("ok", f"{label}：{len(replies)} 条回复，最后一条有话，用时 {replies[-1][0]:.1f} 秒")
     for _, reply in replies:
-        actions = "、".join(describe(item) for item in reply.directives)
+        actions = "] [".join(describe(item) for item in reply.directives)
         print(f"      {'[' + actions + '] ' if actions else ''}{reply.text}", flush=True)
     if spoken is not None and spoken > FIRST_REPLY_SECONDS:
         report.add("warn", f"{label}：{spoken:.1f} 秒后才说第一句话，处理慢时建议先说一句“稍等”")
     declared = set(connection.descriptor.required_capabilities)
-    undeclared = sorted({
-        CAPABILITIES[item.type] for _, reply in replies for item in reply.directives
-        if item.type in CAPABILITIES and CAPABILITIES[item.type] not in declared
-    })
-    if undeclared:
-        report.add("fail", f"{label}：用了没有声明的能力 {'、'.join(undeclared)}，这些指令会被跳过")
+    problems = []
+    for _, reply in replies:
+        for call in reply.directives:
+            reason = call_problem(call)
+            if reason is None and SDK_CALLS[call.call] not in declared:
+                reason = f"robot.{call.call} 需要能力 {SDK_CALLS[call.call]}，SKILL.md 里没有声明"
+            if reason:
+                problems.append(reason)
+    for reason in dict.fromkeys(problems):
+        report.add("fail", f"{label}：{reason}，小懒会跳过这条指令")
     return final
 
 
@@ -445,20 +443,12 @@ def main_settings():
 
 
 def describe_output(output) -> str:
-    """输出模块要执行的一项内容写成文字：设备动作放在方括号里，要说的话放在后面。"""
-    actions = []
-    if output.expression:
-        actions.append({"happy": "开心", "sorry": "抱歉"}[output.expression])
-    if output.gesture:
-        actions.append({"nod": "点头", "shake_head": "摇头"}[output.gesture])
-    if output.paths:
-        actions.append(f"画图 {len(output.paths)} 步")
-    if output.progress_seconds:
-        actions.append(f"显示进度 {output.progress_seconds} 秒")
-    if output.clear:
-        actions.append("恢复待机")
-    prefix = f"[{'、'.join(actions)}] " if actions else ""
-    return prefix + (f"小懒：{output.text}" if output.text else "")
+    """输出模块要执行的一项内容写成文字：设备指令放在方括号里。"""
+    if output.call is not None:
+        return f"[{describe(output.call)}]"
+    if output.reset:
+        return "[一局结束，复位游戏用过的设备]"
+    return f"小懒：{output.text}"
 
 
 async def show_outputs(agent) -> None:

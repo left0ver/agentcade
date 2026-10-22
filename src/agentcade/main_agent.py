@@ -10,8 +10,9 @@ from pydantic import Field, create_model
 
 import observability
 from agentcade.config import Settings
-from agentcade.protocol import CAPABILITIES, GameInput, Presentation, presentations
+from agentcade.protocol import GameInput, Presentation
 from agentcade.providers import OpenAIProvider
+from agentcade.robot_calls import SDK_CALLS, problem
 from agentcade.tools import NoInput, Tool, ToolInput, ToolRegistry, original_text_input
 from observability.events import SCOPE
 
@@ -256,6 +257,8 @@ class MainAgent:
                 if request.kind != "message":
                     self.active = None
                 completion = await self.reply(GAME_FAILURE_REPLIES[request.kind])
+                if self.active is None:
+                    await self.emit([Presentation(reset=True)])
                 if not first.done():
                     first.set_result(completion)
 
@@ -272,8 +275,9 @@ class MainAgent:
         return first.result()
 
     async def accept(self, game_id, request_id, reply):
-        """先执行回复里的设备指令，再播报要说的话。"""
-        if reply.session == "ended":
+        """先执行回复里的设备指令，再播报要说的话；这一局结束时，说完再把设备复位。"""
+        ended = reply.session == "ended"
+        if ended:
             self.active = None
         completion = None
         outputs = self.permitted(game_id, reply.directives)
@@ -283,21 +287,24 @@ class MainAgent:
                 completion = await self.emit(outputs, role="game_agent")
         if reply.text:
             completion = await self.reply(reply.text, role="game_agent")
+        if ended:
+            await self.emit([Presentation(reset=True)])
         return completion
 
-    def permitted(self, game_id, directives) -> list[Presentation]:
-        """游戏只能使用用户同意给它的机器人能力，其余指令跳过并记录。"""
+    def permitted(self, game_id, calls) -> list[Presentation]:
+        """游戏只能调用开放的 SDK 方法，并且只能用用户同意给它的能力，其余调用跳过并记录。"""
         connection = self.games.get(game_id)
         granted = connection.granted if connection is not None else set()
         allowed = []
-        for directive in directives:
-            needed = CAPABILITIES.get(directive.type)
-            if needed and needed not in granted:
-                logger.warning("游戏 %s 的 %s 指令需要能力 %s，但没有得到允许，已跳过",
-                               game_id, directive.type, needed)
+        for call in calls:
+            reason = problem(call)
+            if reason is None and SDK_CALLS[call.call] not in granted:
+                reason = f"{call.call} 需要能力 {SDK_CALLS[call.call]}，但没有得到允许"
+            if reason:
+                logger.warning("游戏 %s 的设备指令已跳过：%s", game_id, reason)
                 continue
-            allowed.append(directive)
-        return presentations(allowed)
+            allowed.append(Presentation(call=call))
+        return allowed
 
     async def output_done(self, request):
         async with self.lock:

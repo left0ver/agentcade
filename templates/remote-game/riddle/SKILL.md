@@ -4,7 +4,7 @@ name: 猜谜语
 aliases: [谜语, 猜谜]
 description: 我出一个谜语，你来猜谜底。猜对了我会点头，还会在屏幕上画一颗星星；猜不出来可以让我公布谜底。
 summary: 我出一个谜语，你来猜谜底
-required_capabilities: [motion, expression.vector_accessory.v1]
+required_capabilities: [motion, expression.runtime.v3]
 version: "1.0.2"
 author: left0ver
 homepage: https://github.com/left0ver/agentcade/tree/main/templates/remote-game

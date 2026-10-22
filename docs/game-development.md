@@ -25,7 +25,7 @@ sequenceDiagram
     participant G as 游戏 Agent
     U->>M: 语音识别出的原话
     M->>G: start、message 或 end，带上原话
-    G-->>M: 中间回复（可以没有）：“稍等”、画图、进度
+    G-->>M: 中间回复（可以没有）：“稍等”、机器人 SDK 调用
     G->>M: 最后一条回复：要说的话
     M->>U: 先执行设备指令，再播报
 ```
@@ -69,7 +69,7 @@ name: 猜谜语
 aliases: [谜语, 猜谜]
 description: 我出一个谜语，你来猜谜底。猜对了我会点头，还会在屏幕上画一颗星星；猜不出来可以让我公布谜底。
 summary: 我出一个谜语，你来猜谜底
-required_capabilities: [motion, expression.vector_accessory.v1]
+required_capabilities: [motion, expression.runtime.v3]
 version: "1.0.2"
 author: left0ver
 homepage: https://github.com/left0ver/agentcade/tree/main/templates/remote-game
@@ -108,6 +108,7 @@ homepage: https://github.com/left0ver/agentcade/tree/main/templates/remote-game
 ```python
 from pathlib import Path
 
+from agentcade import effects
 from agentcade.skill import Skill
 from agentcade.skill_agent import SkillAgent
 from agentcade.tools import tool
@@ -147,9 +148,9 @@ class GameAgent(SkillAgent):
         if self.answer in turn.text:
             self.score += 1
             self.resolved = True
-            await self.react("happy", "nod")
+            await effects.react(self.robot, "happy", "nod")  # 开心的颜文字加点头
             return {"correct": True, "answer": self.answer}
-        await self.react("sorry", "shake_head")
+        await effects.gesture(self.robot, "shake_head")
         return {"correct": False}
 ```
 
@@ -162,8 +163,7 @@ class GameAgent(SkillAgent):
 | `state()` | 当前状态，每轮写进提示词 |
 | `async on_start(turn)` | 开局时在大模型之前调用，比如出好第一题。返回的字典作为 `result` 交给大模型；不写时由大模型按 `SKILL.md` 调用工具开局 |
 | `async on_end(turn)` | 结束时在大模型之前调用，比如统计得分、公布没揭晓的答案。返回的字典作为 `result` 交给大模型 |
-| `await self.act(*directives)` | 立刻发出设备指令，比如 `Draw(paths=...)`、`Progress(seconds=30)` |
-| `await self.react(expression, gesture)` | 对用户的回答做出表情和动作：答对 `("happy", "nod")`，答错 `("sorry", "shake_head")` |
+| `self.robot` | 控制机器人，写法和机器人 SDK 一样，比如 `await self.robot.lights.set_color("#00FF00")`，见下面的“设备指令” |
 | `async close()` | 一局结束时调用，释放自己打开的连接等资源，记得调用 `await super().close()` |
 
 `turn` 是这一轮的上下文：
@@ -212,17 +212,47 @@ async def new_question(self, turn, level: Literal["easy", "hard"] = "easy"):
 
 ### 设备指令
 
-| 指令 | 写法 | 要声明的能力 |
+游戏用 `self.robot` 控制机器人，写法和机器人 SDK（`watcherobot`）一样：
+
+```python
+await self.robot.animation.play("happy")       # 在屏幕上播放自带的动画
+await self.robot.lights.set_color("#00FF00")   # 亮绿灯
+await self.robot.motion.move_to(pan_deg=60, tilt_deg=110, duration_ms=400)  # 转头
+```
+
+游戏不直接连机器人：每次调用作为设备指令发给主 Agent，主 Agent 检查后在机器人上执行。所以内置游戏和远程游戏的写法一样，不用机器人也能用 `chat` 测试。具体规则：
+
+- 只开放下面这些 SDK 方法，参数和 SDK 一样。调用了没开放的方法、参数写错，调用时就会报错，`check` 也会查出来。
+- 用到哪个方法，就要在 `required_capabilities` 里声明它需要的能力，没有声明的调用会被跳过。远程游戏的这些能力，用户安装时要确认。
+- 调用没有返回值，不等机器人执行完。主 Agent 把它们和要说的话排成一队按顺序执行：返回 Job 的调用（动作、动画、音效）等它做完再往下，最多等 10 秒；灯效可以一直循环，不等。
+- 一局结束后，主 Agent 把游戏用过的设备复位：停掉动画和行为、关灯、头转回正前方、屏幕回到待机，游戏不用自己收拾。
+- 在一局里，屏幕归游戏管，主 Agent 不会改。比如显示表情之后要换回题目的画，由游戏自己换。
+
+| 开放的方法 | 要声明的能力 |
+| --- | --- |
+| `lights.set_color`、`lights.play_effect`、`lights.off` | `light` |
+| `animation.play`、`animation.prefetch`、`animation.stop` | `animation` |
+| `behavior.play`、`behavior.stop` | `behavior` |
+| `motion.move_to`、`motion.set_target`、`motion.play_action`、`motion.stop` | `motion` |
+| `expression_runtime.start`、`expression_runtime.update`、`expression_runtime.stop` | `expression.runtime.v3` |
+| `expressions.play_official` | `resource.expression.official` |
+| `audio.play`（机器人自带的音效） | `audio` |
+| `works.play` | `resource.work.play` |
+| `works.play_expression` | `resource.work.expression.play` |
+
+麦克风、摄像头、录像、视觉和人脸跟踪涉及隐私，说话用的音频通道和删除作品会影响小懒和用户的数据，都不开放。动画的名字以机器人实际有的为准，比如 `happy`、`sad`、`shock`、`smile`、`thinking`、`music`。
+
+常用的效果在 `agentcade.effects` 里，它们也是拼好的几次 SDK 调用：
+
+| 写法 | 效果 | 要声明的能力 |
 | --- | --- | --- |
-| 点头、摇头 | `Gesture(name="nod")`、`Gesture(name="shake_head")` | `motion` |
-| 表情，留到下一句话说完 | `Expression(name="happy")`、`Expression(name="sorry")` | 无 |
-| 逐笔画图，最后一步留在屏幕上 | `Draw(paths=[...])` | `expression.vector_accessory.v1` |
-| 显示进度，下一次画图或清屏时结束 | `Progress(seconds=30)` | 无 |
-| 恢复待机画面 | `Clear()` | 无 |
+| `await effects.gesture(self.robot, "nod")` | 点头，`"shake_head"` 是摇头 | `motion` |
+| `await effects.react(self.robot, "happy", "nod", then=图案)` | 显示开心（`happy`）或抱歉（`sorry`）的颜文字，同时点头或摇头；做完后屏幕换回 `then` 这个图案，没有时回到待机的眼睛 | `motion`、`expression.runtime.v3` |
+| `await effects.draw(self.robot, steps)` | 逐笔画图，每一项是一步的完整矢量路径，最后一步留在屏幕上 | `expression.runtime.v3` |
+| `async with effects.Progress(self.robot, 30):` | 显示进度条，预计 30 秒走完，里面的操作完成时走满 | `expression.runtime.v3` |
+| `await effects.show(self.robot, path)`、`await effects.standby(self.robot)` | 屏幕只显示一个图案；回到待机的眼睛 | `expression.runtime.v3` |
 
-指令从 `agentcade.protocol` 导入，按顺序执行，不等执行完成。一局结束后屏幕会自动恢复待机画面，一般不用自己发 `Clear()`。
-
-`Draw` 的每一项是一步的完整图案，用 `agentcade.vector` 的 `Stroke` 和 `encode_vector` 生成，可以参考模板里的 `star()`。屏幕坐标从 0 到 411。
+矢量图案用 `agentcade.vector` 的 `Stroke` 和 `encode_vector` 生成，可以参考模板里的 `star()`。屏幕坐标从 0 到 411，一个图案最多 12 笔、共 192 个点，每笔最多 48 个点，笔宽 1 到 48。
 
 ### 配置
 
@@ -267,11 +297,11 @@ uv run agentcade-game check src/games/my_game
 
 | 检查 | 级别 |
 | --- | --- |
-| 能读到名片，支持流式响应，声明了 `desktop-game/6` | 不通过 |
+| 能读到名片，支持流式响应，声明了 `desktop-game/7` | 不通过 |
 | `SKILL.md` 的声明合规，比如 ID 的格式、`summary` 的长度 | 不通过 |
 | 开局、说一句话、结束都有回复，最后一条有要说的话 | 不通过 |
 | 结束后这一局的状态是 ended；发给不存在的一局时回复已经结束 | 不通过 |
-| 用了没有声明的能力 | 不通过 |
+| 设备指令调用了没开放的 SDK 方法、参数和 SDK 对不上，或者用了没有声明的能力 | 不通过 |
 | `SKILL.md` 里写了“调用 X”，但没有工具 X，比如工具改了名、`SKILL.md` 没跟着改 | 不通过 |
 | 有工具在 `SKILL.md` 里没有提到 | 提醒 |
 | 名片里的消息地址和填写的地址对不上 | 提醒 |
@@ -351,9 +381,9 @@ agentcade-game check https://你的游戏地址
 | 声明合规 | ID、`summary` 等按上面 `SKILL.md` 的规则写；ID 不能和内置游戏或游戏目录里的游戏重复 |
 | 每次请求都有一句话 | 最后一条回复必须有要说的话，最长 500 字。`SkillAgent` 已经保证：大模型或工具出错时会用一句兜底的话 |
 | 收到 `end` 就结束 | `SkillAgent` 已经保证，结束时要做的事写在 `on_end` 里。游戏自己结束时调用 `turn.end_session()` |
-| 只用声明过的能力 | 没有声明的指令会被跳过，`check` 也会报错 |
-| 画图不超限 | 一次最多 64 步；每一步最多 12 笔、共 192 个点，每笔最多 48 个点，笔宽 1 到 48 |
-| 及时说第一句话 | 8 秒内没有话可说时先用 `turn.say` 说一句“稍等”，再用 `Progress` 显示进度 |
+| 只用开放的方法和声明过的能力 | 其余的设备指令会被跳过，`check` 也会报错 |
+| 图案不超限 | 一个图案最多 12 笔、共 192 个点，每笔最多 48 个点，笔宽 1 到 48 |
+| 及时说第一句话 | 8 秒内没有话可说时先用 `turn.say` 说一句“稍等”，再用 `effects.Progress` 显示进度条 |
 | 说的话适合念出来 | 一般一到三句、120 字以内，口语，不用 Markdown、表情符号、链接和列表 |
 | 不提前泄露答案 | `state()` 和中途的回复里不能有没揭晓的答案；对错由工具判断，不交给大模型 |
 | 能容忍识别误差 | 用户的话来自语音识别，可能有同音字、错别字和口语说法，判定要宽松，听不懂时请用户再说一次 |
@@ -377,7 +407,7 @@ agentcade-game check https://你的游戏地址
 
 ## 不用 Python 写
 
-远程游戏只要实现一个遵循 `desktop-game/6` 的 A2A 服务，用什么语言都可以。名片放在 `/.well-known/agent-card.json`，要声明 `capabilities.streaming=true`，有一个 JSONRPC 消息地址，并且有且只有一个标签里带 `desktop-game/6` 的 skill。小懒只把消息发到用户填写的地址：主机用填写的地址，路径用名片里消息地址的路径。`SKILL.md` 里的字段在名片里这样对应：
+远程游戏只要实现一个遵循 `desktop-game/7` 的 A2A 服务，用什么语言都可以。名片放在 `/.well-known/agent-card.json`，要声明 `capabilities.streaming=true`，有一个 JSONRPC 消息地址，并且有且只有一个标签里带 `desktop-game/7` 的 skill。小懒只把消息发到用户填写的地址：主机用填写的地址，路径用名片里消息地址的路径。`SKILL.md` 里的字段在名片里这样对应：
 
 | `SKILL.md` | 名片 |
 | --- | --- |
@@ -389,4 +419,4 @@ agentcade-game check https://你的游戏地址
 | `version` | `version` |
 | `author`、`homepage` | `provider.organization`、`provider.url` |
 
-消息格式和设备指令的字段见 [README 的“架构”一节](../README.md#架构)，写好后同样用 `agentcade-game check <地址>` 检查。
+消息格式见 [README 的“架构”一节](../README.md#架构)。设备指令是一次 SDK 调用，写成 `{"call": "lights.set_color", "args": ["#00FF00"], "kwargs": {"brightness": 0.8}}`，开放的方法和要声明的能力见上面的“设备指令”。写好后同样用 `agentcade-game check <地址>` 检查。

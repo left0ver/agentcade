@@ -216,10 +216,13 @@ def check_animal_start(turn):
         problems.append("画图之前没有先回复一句")
     elif request and not set(request["updates"]) <= set(turn.spoken):
         problems.append("中间回复没有播报")
-    outputs = [item for item in turn.outputs if item["actor"] == "guess_animal"]
-    if not any(item["output"].get("progress_seconds") and item.get("completed") for item in outputs):
+    # 进度条每一格是一次 expression_runtime.start，逐笔画图从第二笔起是 expression_runtime.update。
+    calls = [item["output"]["call"] for item in turn.outputs
+             if item["actor"] == "guess_animal" and item.get("completed") and item["output"].get("call")]
+    if not any(call["call"] == "expression_runtime.start" and call["kwargs"].get("custom_vector_path")
+               for call in calls):
         problems.append("没有显示进度")
-    if not any(item["output"].get("paths") and item.get("completed") for item in outputs):
+    if not any(call["call"] == "expression_runtime.update" for call in calls):
         problems.append("没有在屏幕上画出题目")
     return problems
 

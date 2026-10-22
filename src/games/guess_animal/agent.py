@@ -1,7 +1,7 @@
 import logging
 from pathlib import Path
 
-from agentcade.protocol import Draw, Progress
+from agentcade import effects
 from agentcade.skill import Skill
 from agentcade.skill_agent import SkillAgent
 from agentcade.tools import tool
@@ -50,27 +50,29 @@ class GameAgent(SkillAgent):
                 **self.state()}
 
     async def generate(self, turn):
-        """出一题并画到屏幕上：先请用户稍等、显示进度，画好后直接展示。"""
+        """出一题并画到屏幕上：先请用户稍等、显示进度条，画好后逐笔画出来。"""
         # 生成需要较长时间，先回复一句让主 Agent 恢复收音。
         if not turn.spoken:
             await turn.say("稍等一下，我来画一只动物。")
-        try:
-            await self.act(Progress(seconds=self.estimate))
-        except Exception:
-            # 进度画面只是提示，显示失败不影响出题。
-            logger.warning("显示进度失败", exc_info=True)
+        async with effects.Progress(self.robot, self.estimate):
+            ready = await self.create_question()
+        if not ready:
+            await effects.standby(self.robot)
+            return {"outcome": "generation_failed", **self.state()}
+        await effects.draw(self.robot, list(self.game.animal.drawing_steps()))
+        return {"outcome": "question_ready", **self.state()}
+
+    async def create_question(self):
         for attempt in range(1, GENERATION_ATTEMPTS + 1):
             try:
                 animal, = await self.generator.generate(1)
                 self.game.set_question(animal)
+                return True
             except Exception as error:
                 # 模型偶尔画出不合格的图案或者超时，重新生成；全部失败后题目保持待出状态。
                 logger.warning("生成题目失败（%s/%s）：%s", attempt, GENERATION_ATTEMPTS,
                                error, exc_info=True)
-                continue
-            await self.act(Draw(paths=list(self.game.animal.drawing_steps())))
-            return {"outcome": "question_ready", **self.state()}
-        return {"outcome": "generation_failed", **self.state()}
+        return False
 
     def announce(self, turn, answer):
         """一题结束、用户没猜出来时，答案一定要说出来，避免模型自己编一个。"""
@@ -114,12 +116,13 @@ class GameAgent(SkillAgent):
         turn.judged = True
         if decision not in {Decision.CORRECT, Decision.INCORRECT}:
             return {"outcome": "unclear", **self.state()}
+        drawing = self.game.animal.drawing_steps()[-1]
         reply = self.game.handle(decision, self.game.revision)
-        # 答对点头并显示开心，答错摇头并显示抱歉，由程序在判定时直接触发。
+        # 答对点头并显示开心，答错摇头并显示抱歉，由程序在判定时直接触发；做完后屏幕换回这道题的画。
         if decision is Decision.CORRECT:
-            await self.react("happy", "nod")
+            await effects.react(self.robot, "happy", "nod", then=drawing)
         else:
-            await self.react("sorry", "shake_head")
+            await effects.react(self.robot, "sorry", "shake_head", then=drawing)
             if reply.answer:
                 self.announce(turn, reply.answer)
         if self.game.resolved and self.game.index + 1 == self.game.rounds:

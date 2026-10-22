@@ -21,7 +21,7 @@ pinned: false
 | 文件 | 内容 |
 | --- | --- |
 | `riddle/SKILL.md` | 游戏声明和流程。`id` 和目录名一致；`summary` 是开机问候里念的简短介绍（30 字以内，句末不带标点）；`required_capabilities` 声明要让机器人做什么；`version`、`author`、`homepage` 会显示在安装确认页上 |
-| `riddle/agent.py` | 入口类 `GameAgent`：用 `@tool` 声明的工具、状态，用 `self.act(...)` 发设备指令 |
+| `riddle/agent.py` | 入口类 `GameAgent`：用 `@tool` 声明的工具、状态，用 `self.robot` 控制机器人（写法和机器人 SDK 一样） |
 | `riddle/settings.yaml`、`riddle/config.py` | 游戏读取的配置项 |
 | `Dockerfile` | 安装依赖，运行 `agentcade-game serve` |
 

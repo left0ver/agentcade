@@ -19,10 +19,18 @@ logger = logging.getLogger(__name__)
 
 PATH = user_config_dir().parent / "data" / "games.json"
 
-# 设置页面上给用户看的能力说明；没有列出的能力按原名显示。
+# 设置页面上给用户看的能力说明，对应游戏可以调用的机器人 SDK 方法（见 robot_calls.SDK_CALLS）；
+# 没有列出的能力按原名显示。
 PERMISSIONS = {
-    "motion": "让机器人点头、摇头",
-    "expression.vector_accessory.v1": "在机器人屏幕上画图",
+    "motion": "转动机器人的头，比如点头、摇头",
+    "expression.runtime.v3": "在机器人屏幕上显示表情和图案",
+    "light": "控制机器人的灯光",
+    "animation": "在机器人屏幕上播放自带的动画",
+    "behavior": "让机器人做自带的组合动作",
+    "audio": "播放机器人自带的音效",
+    "resource.expression.official": "播放机器人的官方表情",
+    "resource.work.play": "播放机器人里保存的作品",
+    "resource.work.expression.play": "播放机器人里保存的表情作品",
 }
 
 

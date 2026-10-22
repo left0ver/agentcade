@@ -46,7 +46,6 @@ class RobotApplication:
                     if (not self.output.speaking and not self.listener.busy
                             and not self.listener.input_speaking):
                         await self.agent.tick()
-                    await self.output.progress.check()
                     await asyncio.sleep(0.1)
                 for task in tasks:
                     task.cancel()
