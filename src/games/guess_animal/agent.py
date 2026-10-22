@@ -5,10 +5,11 @@ from agentcade.protocol import Draw, Progress
 from agentcade.skill import Skill
 from agentcade.skill_agent import SkillAgent
 from agentcade.tools import NoInput, Tool, original_text_input
-from games.guess_animal.config import Settings
-from games.guess_animal.game import Decision, Game
-from games.guess_animal.generator import AnimalGenerator
-from games.guess_animal.judge import JevJudge
+
+from .config import Settings
+from .game import Decision, Game
+from .generator import AnimalGenerator
+from .judge import JevJudge
 
 logger = logging.getLogger(__name__)
 

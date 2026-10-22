@@ -1,7 +1,7 @@
 from typesafe_sdk import AsyncTypeSafeClient, Choice, RetryPolicy
 
-from games.turtle_soup.config import Settings
-from games.turtle_soup.library import Puzzle
+from .config import Settings
+from .library import Puzzle
 
 # 置信度低于门槛时不给出是或不是，统一回答“不好说”。
 UNSURE = "unsure"

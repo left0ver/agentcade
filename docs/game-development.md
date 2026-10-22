@@ -46,8 +46,7 @@ cp -r templates/remote-game/riddle src/games/my_game
 ```
 
 1. 把 `SKILL.md` 里的 `id` 改成 `my_game`，再改 `name`、`summary` 和流程。
-2. 把 `agent.py` 里的 `from riddle.config import Settings` 改成 `from games.my_game.config import Settings`。
-3. 运行 `uv run python scripts/write_env_examples.py`，生成 `.env.example`，复制成 `.env` 并填上密钥。
+2. 运行 `uv run python scripts/write_env_examples.py`，生成 `.env.example`，复制成 `.env` 并填上密钥。
 
 **远程游戏**：复制整个 `templates/remote-game/` 到你自己的仓库，按它的 [README](../templates/remote-game/README.md) 改名、调试和部署。
 
@@ -112,7 +111,7 @@ from pathlib import Path
 from agentcade.skill import Skill
 from agentcade.skill_agent import SkillAgent
 from agentcade.tools import Tool, original_text_input
-from games.my_game.config import Settings  # 远程游戏写 from my_game.config import Settings
+from .config import Settings  # 游戏目录里的模块用相对导入，内置和远程游戏都能用
 
 
 class GameAgent(SkillAgent):

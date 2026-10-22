@@ -25,7 +25,7 @@ pinned: false
 | `riddle/settings.yaml`、`riddle/config.py` | 游戏读取的配置项 |
 | `Dockerfile` | 安装依赖，运行 `agentcade-game serve` |
 
-改成你自己的游戏：把 `riddle` 目录改成你的游戏 ID（小写字母、数字和下划线），同时改 `SKILL.md` 里的 `id`、`author`、`homepage`，`agent.py` 里的导入，以及 `Dockerfile` 里的两处 `riddle`。
+改成你自己的游戏：把 `riddle` 目录改成你的游戏 ID（小写字母、数字和下划线），同时改 `SKILL.md` 里的 `id`、`author`、`homepage`，以及 `Dockerfile` 里的两处 `riddle`。游戏目录里的模块互相导入时用相对导入（`from .config import Settings`），改名后不用改。
 
 ## 本地调试
 

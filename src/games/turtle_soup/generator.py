@@ -14,8 +14,9 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from typesafe_sdk import AsyncTypeSafeClient, Noul, RetryPolicy, Score
 
 from agentcade.providers import OpenAIProvider
-from games.turtle_soup.config import Settings
-from games.turtle_soup.library import Generated, Library, Puzzle
+
+from .config import Settings
+from .library import Generated, Library, Puzzle
 
 logger = logging.getLogger(__name__)
 T = TypeVar("T", bound=BaseModel)

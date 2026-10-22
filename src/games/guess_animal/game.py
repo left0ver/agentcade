@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from enum import Enum
 
-from games.guess_animal.animals import Animal
+from .animals import Animal
 
 
 class Decision(str, Enum):

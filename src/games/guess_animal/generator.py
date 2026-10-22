@@ -13,8 +13,9 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from agentcade.config import ROOT
 from agentcade.providers import OpenAIProvider
 from agentcade.vector import Stroke, encode_vector
-from games.guess_animal.animals import Animal
-from games.guess_animal.config import Settings
+
+from .animals import Animal
+from .config import Settings
 
 Coordinate = Annotated[int, Field(strict=True, ge=0, le=411)]
 Coordinates = Annotated[list[Coordinate], Field(min_length=2, max_length=2)]

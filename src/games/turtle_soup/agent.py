@@ -7,10 +7,11 @@ from agentcade.protocol import Gesture
 from agentcade.skill import Skill
 from agentcade.skill_agent import SkillAgent
 from agentcade.tools import NoInput, Tool, original_text_input
-from games.turtle_soup.config import Settings
-from games.turtle_soup.generator import PuzzleGenerator
-from games.turtle_soup.judge import JevJudge
-from games.turtle_soup.library import Library
+
+from .config import Settings
+from .generator import PuzzleGenerator
+from .judge import JevJudge
+from .library import Library
 
 logger = logging.getLogger(__name__)
 

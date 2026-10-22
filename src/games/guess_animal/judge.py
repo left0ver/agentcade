@@ -1,8 +1,8 @@
 from typesafe_sdk import AsyncTypeSafeClient, Choice, RetryPolicy
 
-from games.guess_animal.animals import Animal
-from games.guess_animal.config import Settings
-from games.guess_animal.game import Decision
+from .animals import Animal
+from .config import Settings
+from .game import Decision
 
 
 class JevJudge:

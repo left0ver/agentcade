@@ -12,7 +12,8 @@ from agentcade.skill import Skill
 from agentcade.skill_agent import SkillAgent
 from agentcade.tools import NoInput, Tool, original_text_input
 from agentcade.vector import Stroke, encode_vector
-from riddle.config import Settings
+
+from .config import Settings
 
 # 谜面、可以算对的谜底、一条提示。
 RIDDLES = [
