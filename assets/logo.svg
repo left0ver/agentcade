@@ -15,10 +15,14 @@
     <path d="M-10 -26a5 5 0 0 1 5-5h10a5 5 0 0 1 5 5v36l-10 20l-10-20z" fill="#FF5A5F"/>
     <path d="M-10 -15h20" stroke="#FFFFFF" stroke-width="5"/>
   </g>
-  <!-- 猜数字 -->
+  <!-- 海龟汤：冒热气的汤碗 -->
   <circle cx="380" cy="140" r="56" fill="#2A1590" opacity=".3"/>
   <circle cx="380" cy="132" r="56" fill="#FFFFFF"/>
-  <path d="M360 108H402L376 158" fill="none" stroke="#FF9F1A" stroke-width="13" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M348 132H412Q412 164 380 164Q348 164 348 132Z" fill="#FF9F1A"/>
+  <g fill="none" stroke="#FF9F1A" stroke-width="7" stroke-linecap="round">
+    <path d="M366 120Q360 112 366 104Q372 96 366 88"/>
+    <path d="M394 120Q388 112 394 104Q400 96 394 88"/>
+  </g>
   <!-- 语音聊天 -->
   <circle cx="132" cy="388" r="56" fill="#2A1590" opacity=".3"/>
   <circle cx="132" cy="380" r="56" fill="#FFFFFF"/>
