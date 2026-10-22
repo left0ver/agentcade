@@ -93,6 +93,7 @@ options:
 ```bash
 uv run agentcade-game chat src/games/turtle_soup    # 文字模拟器：打字和游戏对话，设备指令显示成文字
 uv run agentcade-game check src/games/turtle_soup   # 合规检查：名片和完整的一局
+uv run agentcade-game play                          # 整条链路的文字模式：经过主 Agent 和所有游戏
 ```
 
 已安装的远程游戏和停用的内置游戏记在用户目录的 `data/games.json` 里，升级应用不会丢；某个游戏连不上时只跳过它，其他游戏照常可玩。

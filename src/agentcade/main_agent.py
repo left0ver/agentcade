@@ -50,6 +50,21 @@ start_game、end_game、send_message 一调用，这一轮就结束，游戏的�
 - 普通聊天和知识问题：直接回答，不调用工具。答完就等用户说话，不催促答题，也不替游戏出题。"""
 
 
+def ordinal(number: int) -> str:
+    """开机问候里的序号，十以内念成中文数字。"""
+    return "一二三四五六七八九十"[number - 1] if 1 <= number <= 10 else str(number)
+
+
+def greeting(games) -> str:
+    """开机问候：逐个介绍可以玩的游戏。"""
+    listed = "；".join(
+        f"第{ordinal(index)}个游戏是{game.descriptor.name}，它的玩法是{game.descriptor.summary}"
+        for index, game in enumerate(games.values(), 1))
+    if not listed:
+        return "你好呀，我是小懒！现在还没有可玩的游戏，我们可以聊聊天。"
+    return f"你好呀，我是小懒！现在可以玩这些游戏：{listed}。你可以跟我说你想玩的游戏，我也可以跟你聊天。"
+
+
 @dataclass
 class ActiveGame:
     game_id: str

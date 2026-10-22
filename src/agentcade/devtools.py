@@ -3,6 +3,7 @@
     agentcade-game serve <游戏目录>      单独运行游戏服务，给别人的机器人连
     agentcade-game check <地址或目录>    合规检查：名片和完整的一局
     agentcade-game chat  <地址或目录>    文字模拟器：不用机器人，打字和游戏对话
+    agentcade-game play  [--game ...]    整条链路的文字模式：经过主 Agent 和所有游戏，不用机器人
     agentcade-game catalog <目录文件>   检查游戏目录 catalog/games.json，CI 和审核时用
 
 游戏目录里要有 SKILL.md 和 agent.py（入口类 GameAgent）。配置先读目录里的 .env，
@@ -18,6 +19,7 @@ import sys
 import time
 from contextlib import AsyncExitStack, suppress
 from pathlib import Path
+from types import SimpleNamespace
 from typing import ClassVar
 from urllib.parse import urlsplit
 from uuid import uuid4
@@ -25,12 +27,15 @@ from uuid import uuid4
 import httpx
 from a2a.client import A2ACardResolver, ClientConfig, create_client
 from a2a.utils.errors import A2AError
+from dotenv import dotenv_values
 from pydantic import ValidationError
 
+import observability
 from agentcade import catalog, registry
-from agentcade.config import SOURCE
+from agentcade.config import SOURCE, LLMSettings, Settings, config_file, resolve_options
 from agentcade.game_client import (
     GameConnection,
+    GameHub,
     declared_url,
     discover,
     explain,
@@ -40,6 +45,7 @@ from agentcade.game_client import (
     remote_descriptor,
 )
 from agentcade.game_server import MAX_SESSIONS, serve_game
+from agentcade.main_agent import MainAgent, greeting
 from agentcade.protocol import CAPABILITIES, GameInput
 
 # 开局之后多久还没有说第一句话，就建议先说一句“稍等”。
@@ -344,6 +350,114 @@ async def chat(args) -> None:
                 print("（这一局结束了，接着说话会重新开一局）", flush=True)
 
 
+# ---------- play ----------
+
+def main_settings():
+    """文字模式只用到主 Agent 的大模型配置：读主 Agent 的配置文件（有的话），再用同名环境变量覆盖。"""
+    options = tuple(option for option in Settings.options() if option.key.startswith("LLM_"))
+    path = config_file(Settings.env_file())
+    stored = dict(dotenv_values(path, interpolate=False)) if path.is_file() else {}
+    stored.update({option.key: os.environ[option.key] for option in options
+                   if os.environ.get(option.key)})
+    try:
+        return SimpleNamespace(llm=LLMSettings.from_values(resolve_options(options, stored)))
+    except ValueError as error:
+        raise SystemExit(f"主 Agent 的大模型配置不全：{error}。填在 {path}，或者设置同名环境变量") from None
+
+
+def describe_output(output) -> str:
+    """输出模块要执行的一项内容写成文字：设备动作放在方括号里，要说的话放在后面。"""
+    actions = []
+    if output.expression:
+        actions.append({"happy": "开心", "sorry": "抱歉"}[output.expression])
+    if output.gesture:
+        actions.append({"nod": "点头", "shake_head": "摇头"}[output.gesture])
+    if output.paths:
+        actions.append(f"画图 {len(output.paths)} 步")
+    if output.progress_seconds:
+        actions.append(f"显示进度 {output.progress_seconds} 秒")
+    if output.clear:
+        actions.append("恢复待机")
+    prefix = f"[{'、'.join(actions)}] " if actions else ""
+    return prefix + (f"小懒：{output.text}" if output.text else "")
+
+
+async def show_outputs(agent) -> None:
+    """代替语音合成和机器人：把主 Agent 要播报的话和设备指令打印出来，马上算作完成。"""
+    while True:
+        request = await agent.outputs.get()
+        try:
+            for output in request.outputs:
+                print(describe_output(output), flush=True)
+            await agent.output_done(request)
+        finally:
+            if not request.completed.done():
+                request.completed.cancel()
+            agent.outputs.task_done()
+
+
+async def settle(agent) -> None:
+    """等游戏把还没发完的回复都发完、都打印出来。"""
+    while agent.busy:
+        await asyncio.sleep(0.1)
+    await agent.outputs.join()
+
+
+async def play(args) -> None:
+    async with AsyncExitStack() as stack:
+        hub = GameHub()
+        # 设备指令都显示成文字，机器人的能力全部算作支持。
+        hub.supports = lambda capability: True
+        stack.push_async_callback(hub.close)
+        await hub.start()
+        for game_id, reason in hub.errors.items():
+            print(f"（{game_id} 没有接入：{reason}）", flush=True)
+        # 正在开发的游戏直接接入，和已有的游戏同名时代替它。
+        for target in args.game:
+            url = await open_target(stack, target)
+            connection, _ = await connect(stack, url, args.timeout)
+            hub.games[connection.descriptor.id] = connection
+        agent = MainAgent(main_settings(), hub.games)
+        hub.in_use = lambda game_id: agent.active is not None and agent.active.game_id == game_id
+        stack.push_async_callback(agent.close)
+        printer = asyncio.create_task(show_outputs(agent))
+        stack.callback(printer.cancel)
+
+        async def tick():
+            while True:
+                await agent.tick()
+                await asyncio.sleep(0.1)
+
+        ticker = asyncio.create_task(tick())
+        stack.callback(ticker.cancel)
+        piped = not sys.stdin.isatty()
+        print("输入要说的话；/wait 等游戏把话说完，/quit 退出。\n", flush=True)
+        await agent.reply(greeting(hub.games))
+        await settle(agent)
+        while True:
+            try:
+                line = (await asyncio.to_thread(input, "" if piped else "你> ")).strip()
+            except EOFError:
+                # 脚本读完了，等游戏把最后的话说完再退出。
+                await settle(agent)
+                return
+            if piped and line:
+                print(f"你> {line}", flush=True)
+            if line == "/quit":
+                return
+            if line == "/wait":
+                await settle(agent)
+                continue
+            if not line:
+                continue
+            turn_id = observability.user_input(line, time.monotonic())
+            with observability.turn(turn_id):
+                completion = await agent.receive(line)
+            # 和机器人一样，第一句话说完才接着听下一句。
+            if completion is not None:
+                await asyncio.shield(completion)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="agentcade-game", description="开发和部署 Agentcade 游戏")
     commands = parser.add_subparsers(dest="command", required=True)
@@ -363,6 +477,11 @@ def main() -> None:
         if name == "check":
             command.add_argument("--say", default="你好", help="开局后说的一句话")
 
+    whole = commands.add_parser("play", help="整条链路的文字模式：经过主 Agent 和所有游戏")
+    whole.add_argument("--game", action="append", default=[],
+                       help="另外接入的游戏地址或者本地目录，可以写多次；和已有游戏同名时代替它")
+    whole.add_argument("--timeout", type=float, default=300, help="每个请求最长等待的秒数")
+
     listed = commands.add_parser("catalog", help="检查游戏目录文件")
     listed.add_argument("file", help="目录文件，一般是 catalog/games.json")
     listed.add_argument("--online", action="store_true", help="读取游戏名片，核对条目和名片一致")
@@ -379,6 +498,8 @@ def main() -> None:
             sys.exit(asyncio.run(check(args)))
         elif args.command == "catalog":
             sys.exit(asyncio.run(check_catalog(args)))
+        elif args.command == "play":
+            asyncio.run(play(args))
         else:
             asyncio.run(chat(args))
     except KeyboardInterrupt:

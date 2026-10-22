@@ -256,7 +256,20 @@ uv run agentcade-game check src/games/my_game
 
 `--say "我猜是水"` 可以换开局后说的那句话，`--timeout` 改每个请求最长等待的秒数。
 
-### 4. 真机测试
+### 4. 整条链路的文字模式
+
+`chat` 直接和游戏对话；`play` 和真机上一样经过主 Agent，接入所有内置游戏和已安装的远程游戏，只是用打字代替说话，回复和设备指令打印出来，不用机器人：
+
+```bash
+uv run agentcade-game play                                      # 内置游戏和已安装的远程游戏
+uv run agentcade-game play --game templates/remote-game/riddle  # 再接入正在开发的游戏，和已有的同名时代替它
+```
+
+输入 `/wait` 等游戏把还没说完的话说完（比如画完一题），`/quit` 退出。和机器人一样，上一句的第一条回复出来后才读下一句，所以游戏还在处理时输入的话会得到“还在准备呢”。要说的话也可以一行一行写在文件里，用 `play < 场景.txt` 自动跑完。主 Agent 的大模型配置从 `src/agentcade/.env` 读，也可以用 `LLM_API_KEY` 等环境变量。
+
+下面真机测试表里认游戏名、游戏中闲聊、处理中插话、结束这些主 Agent 的行为，都可以先用它测。
+
+### 5. 真机测试
 
 内置游戏直接运行应用：
 
@@ -285,7 +298,7 @@ uv run agentcade-game serve templates/remote-game/riddle --port 7860
 
 改了主 Agent 或者游戏运行时的话，再跑一遍端到端测试 `uv run python scripts/e2e_robot.py`，它会用电脑扬声器替用户说话，测海龟汤和你画我猜，见 [README](../README.md#本地开发)。
 
-### 5. 部署后
+### 6. 部署后
 
 远程游戏部署好之后，用最终的地址再检查一次：
 
@@ -301,7 +314,8 @@ agentcade-game check https://你的游戏地址
 | --- | --- |
 | `agentcade-game serve <游戏目录> --port 7860` | 单独运行游戏服务。名片里的对外地址取 `--public-url`、环境变量 `PUBLIC_URL`，在 Hugging Face Space 上自动用 `SPACE_HOST`；配置先读目录里的 `.env`，再用同名环境变量覆盖 |
 | `agentcade-game check <地址或目录>` | 合规检查：检查名片，再按开局、说一句话、结束真实跑一局 |
-| `agentcade-game chat <地址或目录>` | 文字模拟器 |
+| `agentcade-game chat <地址或目录>` | 文字模拟器，直接和一个游戏对话 |
+| `agentcade-game play [--game <地址或目录>]` | 整条链路的文字模式：经过主 Agent 和所有游戏 |
 | `agentcade-game catalog catalog/games.json` | 检查游戏目录的格式；加 `--online` 再读取每个游戏的名片，核对和条目一致 |
 
 ## 要求
