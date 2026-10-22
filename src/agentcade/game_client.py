@@ -6,13 +6,13 @@ from collections.abc import Awaitable, Callable
 from contextlib import AsyncExitStack
 from pathlib import Path
 from typing import Literal
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, urlunsplit
 from uuid import uuid4
 
 import httpx
 from a2a.client import A2ACardResolver, ClientConfig, create_client
 from a2a.client.errors import AgentCardResolutionError
-from a2a.types import Message, Role, SendMessageRequest, TaskState
+from a2a.types import AgentCard, AgentInterface, Message, Role, SendMessageRequest, TaskState
 from pydantic import ValidationError
 
 import observability
@@ -149,17 +149,39 @@ def remote_descriptor(card, skill) -> GameDescriptor:
     )
 
 
-def check_interface(card, url: str) -> None:
-    """名片里的消息地址要从这里连得上：游戏在公网上时，消息地址不能是本机或局域网地址。"""
+def declared_url(card) -> str:
+    """名片里声明的 JSONRPC 消息地址。"""
     for interface in card.supported_interfaces:
-        if interface.protocol_binding != "JSONRPC":
-            continue
-        target = urlsplit(interface.url).hostname or ""
-        if registry.local_host(target) and not registry.local_host(urlsplit(url).hostname or ""):
-            raise ValueError(f"名片里的消息地址 {interface.url} 是本机或局域网地址，从这里连不上，"
-                             "需要开发者把它改成公网地址")
-        return
+        if interface.protocol_binding == "JSONRPC":
+            return interface.url
     raise ValueError("名片里没有 JSONRPC 消息地址")
+
+
+def message_url(card, url: str) -> str:
+    """实际发送消息的地址：名片里的消息地址换到用户填写的地址下，路径沿用名片里的。
+
+    名片里的地址由开发者配置，可能配错（比如 PUBLIC_URL 写成 http 或者内网地址），也可能指向
+    别的服务器；用户只同意把说的话发给自己填写的地址，所以消息一律发到那里。
+    """
+    entered = urlsplit(url)
+    path = urlsplit(declared_url(card)).path or "/"
+    # 游戏部署在子路径下时，名片里的路径可能少了这一段，例如没有设置 PUBLIC_URL。
+    if entered.path and path != entered.path and not path.startswith(entered.path + "/"):
+        path = entered.path + path
+    return urlunsplit((entered.scheme, entered.netloc, path, "", ""))
+
+
+def pinned(card, url: str):
+    """复制一份名片，只保留发到用户填写的地址的那个消息地址，用来创建 A2A 客户端。"""
+    interface = AgentInterface()
+    interface.CopyFrom(next(item for item in card.supported_interfaces
+                            if item.protocol_binding == "JSONRPC"))
+    interface.url = message_url(card, url)
+    copy = AgentCard()
+    copy.CopyFrom(card)
+    del copy.supported_interfaces[:]
+    copy.supported_interfaces.append(interface)
+    return copy
 
 
 class GameHub:
@@ -255,9 +277,8 @@ class GameHub:
                 timeout=entry.timeout_seconds, trust_env=False,
             ))
             card = await A2ACardResolver(http, entry.url).get_agent_card()
-            check_interface(card, entry.url)
             descriptor = remote_descriptor(card, protocol_skill(card, entry.id))
-            client = await self.client(stack, card, http)
+            client = await self.client(stack, pinned(card, entry.url), http)
             return GameConnection(descriptor, client, entry.granted)
 
         await self.open(entry.id, opener)
@@ -291,8 +312,8 @@ class GameHub:
                 card = await A2ACardResolver(http, url).get_agent_card()
             except Exception as error:
                 raise ValueError(f"读取不到这个地址的游戏：{explain(error)}") from error
-        check_interface(card, url)
         try:
+            declared_url(card)
             descriptor = remote_descriptor(card, protocol_skill(card))
         except ValidationError as error:
             raise ValueError(f"游戏名片不合规：{explain(error)}") from error

@@ -250,6 +250,7 @@ uv run agentcade-game check src/games/my_game
 | 开局、说一句话、结束都有回复，最后一条有要说的话 | 不通过 |
 | 结束后这一局的状态是 ended；发给不存在的一局时回复已经结束 | 不通过 |
 | 用了没有声明的能力 | 不通过 |
+| 名片里的消息地址和填写的地址对不上 | 提醒 |
 | 超过 8 秒才说第一句话 | 提醒 |
 | 地址用的是 http、没写 `author`、声明了不认识的能力 | 提醒 |
 
@@ -326,7 +327,7 @@ agentcade-game check https://你的游戏地址
 | --- | --- |
 | 同时给很多人玩 | 每一局一个实例，状态放在实例属性里；模块级的共享数据要能被多局同时访问。超过 30 分钟没有输入的局会自动关闭，同时进行的局数默认最多 32 局，用 `--max-sessions` 修改 |
 | 不让用户等太久 | 超过 210 秒没有任何回复，小懒会当成连接超时 |
-| 地址一致 | `PUBLIC_URL` 要和用户填写的地址完全一致，名片里的消息地址就是它加上 `/a2a` |
+| `PUBLIC_URL` 设成用户填写的地址 | 小懒总是把消息发到用户填写的地址，所以 `PUBLIC_URL` 配错了也能玩，只是 `check` 会提醒。设对了，名片里的地址才是对的，别的 A2A 客户端也能直接用 |
 | 流式响应不能被缓冲 | 前面有 Caddy 或 Nginx 时，关掉响应缓冲，请求超时设到 5 分钟以上，见[模板的部署说明](../templates/remote-game/README.md#部署到自己的服务器) |
 | 尽量用 https | 公网地址用 http 时传输不加密，用户安装时会看到提醒 |
 | 保护隐私 | 用户玩游戏时说的话会发到你的服务器上，不要挪作他用；保存的话要在提交游戏目录时说明保存多久、用来做什么 |
@@ -338,7 +339,7 @@ agentcade-game check https://你的游戏地址
 
 ## 不用 Python 写
 
-远程游戏只要实现一个遵循 `desktop-game/6` 的 A2A 服务，用什么语言都可以。名片放在 `/.well-known/agent-card.json`，要声明 `capabilities.streaming=true`，有一个 JSONRPC 消息地址，并且有且只有一个标签里带 `desktop-game/6` 的 skill。`SKILL.md` 里的字段在名片里这样对应：
+远程游戏只要实现一个遵循 `desktop-game/6` 的 A2A 服务，用什么语言都可以。名片放在 `/.well-known/agent-card.json`，要声明 `capabilities.streaming=true`，有一个 JSONRPC 消息地址，并且有且只有一个标签里带 `desktop-game/6` 的 skill。小懒只把消息发到用户填写的地址：主机用填写的地址，路径用名片里消息地址的路径。`SKILL.md` 里的字段在名片里这样对应：
 
 | `SKILL.md` | 名片 |
 | --- | --- |

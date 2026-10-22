@@ -83,7 +83,7 @@ games.example.com {
 }
 ```
 
-`PUBLIC_URL` 要和用户填写的地址完全一致，名片里的消息地址就是 `PUBLIC_URL` 加 `/a2a`。
+`PUBLIC_URL` 是写进名片的对外地址，名片里的消息地址就是它加上 `/a2a`。小懒总是把消息发到用户填写的地址，所以它配错了也能玩，只是 `agentcade-game check` 会提醒；建议设成用户填写的地址。
 
 ### 国内服务器
 

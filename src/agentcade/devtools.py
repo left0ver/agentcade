@@ -31,9 +31,11 @@ from agentcade import catalog, registry
 from agentcade.config import SOURCE
 from agentcade.game_client import (
     GameConnection,
-    check_interface,
+    declared_url,
     discover,
     explain,
+    message_url,
+    pinned,
     protocol_skill,
     remote_descriptor,
 )
@@ -82,9 +84,9 @@ async def open_target(stack: AsyncExitStack, target: str) -> str:
 async def connect(stack: AsyncExitStack, url: str, timeout: float):
     http = await stack.enter_async_context(httpx.AsyncClient(timeout=timeout, trust_env=False))
     card = await A2ACardResolver(http, url).get_agent_card()
-    check_interface(card, url)
     descriptor = remote_descriptor(card, protocol_skill(card))
-    client = await create_client(card, client_config=ClientConfig(
+    # 和小懒一样，消息只发到填写的地址。
+    client = await create_client(pinned(card, url), client_config=ClientConfig(
         streaming=True, httpx_client=http, supported_protocol_bindings=["JSONRPC"],
     ))
     stack.push_async_callback(client.close)
@@ -181,7 +183,7 @@ async def check(args) -> int:
         else:
             report.add("ok", f"地址 {url}")
         try:
-            connection, _ = await connect(stack, url, args.timeout)
+            connection, card = await connect(stack, url, args.timeout)
         except ValidationError as error:
             report.add("fail", f"名片不合规：{explain(error)}")
             return 1
@@ -192,7 +194,11 @@ async def check(args) -> int:
         report.add("ok", f"能读到 {url}/.well-known/agent-card.json，支持流式响应")
         report.add("ok", f"游戏 {descriptor.id}“{descriptor.name}”，简短介绍 {len(descriptor.summary)} 字："
                          f"{descriptor.summary}")
-        report.add("ok", "名片里的消息地址可以访问")
+        declared, target = declared_url(card), message_url(card, url)
+        if declared != target:
+            report.add("warn", f"名片里的消息地址是 {declared}，和填写的地址对不上，小懒会改发到 {target}；"
+                               f"可以把 PUBLIC_URL 设成 {url}，让名片里的地址也对")
+        report.add("ok", f"消息发到 {target}")
         unknown = [name for name in descriptor.required_capabilities if name not in registry.PERMISSIONS]
         if unknown:
             report.add("warn", f"声明了核心不认识的能力 {'、'.join(unknown)}，安装时会按原名显示")
@@ -239,7 +245,7 @@ async def verify_listing(listing, report, timeout) -> None:
     async with httpx.AsyncClient(timeout=timeout, trust_env=False) as http:
         try:
             card = await A2ACardResolver(http, listing.url).get_agent_card()
-            check_interface(card, listing.url)
+            declared_url(card)
             descriptor = remote_descriptor(card, protocol_skill(card))
         except (*ERRORS, ValidationError) as error:
             report.add("fail", f"{listing.id}：读取名片失败，{explain(error)}")
