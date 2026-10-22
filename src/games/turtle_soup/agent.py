@@ -123,10 +123,26 @@ class GameAgent(SkillAgent):
         finally:
             reminder.cancel()
 
-    def reveal(self, outcome):
+    def reveal(self, turn, outcome):
         self.resolved = True
         self.library.finish(self.puzzle, outcome)
+        turn.must_say(self.puzzle.truth)
         return {"outcome": outcome, "truth": self.puzzle.truth, **self.state()}
+
+    async def on_start(self, turn):
+        result = await self.serve(turn)
+        turn.must_say(self.puzzle.surface)
+        return result
+
+    async def on_end(self, turn):
+        unfinished = self.puzzle is not None and not self.resolved
+        if unfinished:
+            self.library.finish(self.puzzle, "unfinished")
+            # 没猜完的那道题公布汤底，避免模型自己编一个。
+            turn.must_say(self.puzzle.truth)
+        self.ended = True
+        return {"outcome": "ended", **({"truth": self.puzzle.truth} if unfinished else {}),
+                **self.state()}
 
     def tools(self, turn):
         judged = False
@@ -137,11 +153,6 @@ class GameAgent(SkillAgent):
             if self.puzzle is None:
                 return "not_started"
             return "puzzle_resolved" if self.resolved else None
-
-        async def start_game():
-            if self.puzzle is not None or self.ended:
-                return {"outcome": "already_started", **self.state()}
-            return await self.serve(turn)
 
         async def ask_question(text):
             nonlocal judged
@@ -170,7 +181,7 @@ class GameAgent(SkillAgent):
             if verdict == "solved":
                 self.solved += 1
                 await self.react("happy", "nod")
-                return {"verdict": verdict, **self.reveal("solved")}
+                return {"verdict": verdict, **self.reveal(turn, "solved")}
             if verdict == "wrong":
                 await self.act(Gesture(name="shake_head"))
             return {"verdict": verdict, **self.state()}
@@ -189,29 +200,19 @@ class GameAgent(SkillAgent):
             reason = unavailable()
             if reason:
                 return {"outcome": reason, **self.state()}
-            return self.reveal("revealed")
+            return self.reveal(turn, "revealed")
 
         async def next_puzzle():
             if self.ended or self.puzzle is None:
                 return {"outcome": "game_over" if self.ended else "not_started", **self.state()}
             if not self.resolved:
                 return {"outcome": "puzzle_unresolved", **self.state()}
-            return await self.serve(turn)
-
-        async def end_game():
-            unfinished = self.puzzle is not None and not self.resolved
-            if unfinished:
-                self.library.finish(self.puzzle, "unfinished")
-            self.ended = True
-            turn.end_session()
-            # 没猜完的那道题公布汤底，避免模型自己编一个。
-            return {"outcome": "ended", **({"truth": self.puzzle.truth} if unfinished else {}),
-                    **self.state()}
+            result = await self.serve(turn)
+            turn.must_say(self.puzzle.surface)
+            return result
 
         answer_input = original_text_input(turn.text)
         return [
-            Tool("start_game", "开局并选一道没玩过的题，返回题目名称和汤面；题都玩过时会现场出一道新题，"
-                 "要等一两分钟。", NoInput, start_game),
             Tool("ask_question", "按汤底回答用户的是非提问，结果为 yes、no、irrelevant、"
                  "not_question 或 unsure；每条用户输入只能判断一次。", answer_input, ask_question),
             Tool("submit_solution", "判断用户说出的推理有没有猜中汤底，结果为 solved、partial、"
@@ -221,7 +222,6 @@ class GameAgent(SkillAgent):
             Tool("reveal_truth", "用户放弃时公布汤底，这道题结束。", NoInput, reveal_truth),
             Tool("next_puzzle", "这道题揭晓之后换一道没玩过的题，返回汤面；题都玩过时会现场出一道新题。",
                  NoInput, next_puzzle),
-            Tool("end_game", "结束游戏，返回猜中的题数和没猜完那道题的汤底。", NoInput, end_game),
         ]
 
     async def close(self):

@@ -41,16 +41,38 @@ class GameAgent(SkillAgent):
     def __init__(self, settings):
         super().__init__(settings)
         self.riddle = None
+        self.resolved = False
         self.solved = 0
 
     def state(self):
         # 每轮写进提示词，不能包含谜底。
         return {"riddle": self.riddle[0] if self.riddle else None, "solved": self.solved}
 
+    def ask(self, turn):
+        self.riddle, self.resolved = random.choice(RIDDLES), False
+        # 谜面一定要念出来，大模型漏掉时程序会补上。
+        turn.must_say(self.riddle[0])
+        return {"riddle": self.riddle[0]}
+
+    def reveal(self, turn):
+        self.resolved = True
+        answer = self.riddle[1][0]
+        turn.must_say(answer, fallback=f"谜底是{answer}。")
+        return answer
+
+    async def on_start(self, turn):
+        # 开局时程序直接出好第一个谜语，不用等大模型调用工具。
+        return self.ask(turn)
+
+    async def on_end(self, turn):
+        # 用户没猜出来就结束时，公布这个谜语的谜底。
+        if self.riddle and not self.resolved:
+            return {"solved": self.solved, "answer": self.reveal(turn)}
+        return {"solved": self.solved}
+
     def tools(self, turn):
         async def new_riddle():
-            self.riddle = random.choice(RIDDLES)
-            return {"riddle": self.riddle[0]}
+            return self.ask(turn)
 
         async def check_answer(text):
             if self.riddle is None:
@@ -58,7 +80,7 @@ class GameAgent(SkillAgent):
             if any(answer in text for answer in self.riddle[1]):
                 self.solved += 1
                 await self.act(Gesture(name="nod"), Draw(paths=star()))
-                return {"correct": True, "answer": self.riddle[1][0], **self.state()}
+                return {"correct": True, "answer": self.reveal(turn), **self.state()}
             await self.act(Gesture(name="shake_head"))
             return {"correct": False}
 
@@ -66,11 +88,7 @@ class GameAgent(SkillAgent):
             return {"hint": self.riddle[2]} if self.riddle else {"outcome": "no_riddle"}
 
         async def reveal_answer():
-            return {"answer": self.riddle[1][0]} if self.riddle else {"outcome": "no_riddle"}
-
-        async def end_game():
-            turn.end_session()
-            return {"outcome": "ended", **self.state()}
+            return {"answer": self.reveal(turn)} if self.riddle else {"outcome": "no_riddle"}
 
         return [
             Tool("new_riddle", "出一个新谜语，返回谜面。", NoInput, new_riddle),
@@ -78,5 +96,4 @@ class GameAgent(SkillAgent):
                  original_text_input(turn.text), check_answer),
             Tool("get_hint", "取得当前谜语的提示。", NoInput, get_hint),
             Tool("reveal_answer", "用户放弃时公布谜底。", NoInput, reveal_answer),
-            Tool("end_game", "结束游戏。", NoInput, end_game),
         ]

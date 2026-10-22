@@ -31,7 +31,7 @@ sequenceDiagram
 ```
 
 - 用户说“玩猜谜语”时主 Agent 发 `start`，局内说的话发 `message`，用户说“结束游戏”或者应用退出时发 `end`。
-- 游戏 Agent 继承 `SkillAgent`：大模型按 `SKILL.md` 里的流程主持，决定调用哪些工具、怎么说；规则、判定和状态写在工具里。
+- 游戏 Agent 继承 `SkillAgent`：大模型按 `SKILL.md` 里的流程主持，决定调用哪些工具、怎么说；规则、判定和状态写在工具里。开局和结束时，程序先调用游戏的 `on_start`、`on_end`，把结果交给大模型。
 - 每一局创建一个 `GameAgent` 实例，状态放在实例属性里，这一局结束后实例关闭。游戏 Agent 记得这一局最近 16 轮对话。
 - 游戏处理一条输入时（例如画一题要几十秒），用户再说和游戏有关的话，小懒会直接回“我还在准备呢”；聊天和“结束游戏”照常可用，结束会取消正在处理的那一轮。
 
@@ -71,7 +71,7 @@ aliases: [谜语, 猜谜]
 description: 我出一个谜语，你来猜谜底。猜对了我会点头，还会在屏幕上画一颗星星；猜不出来可以让我公布谜底。
 summary: 我出一个谜语，你来猜谜底
 required_capabilities: [motion, expression.vector_accessory.v1]
-version: "1.0.1"
+version: "1.0.2"
 author: left0ver
 homepage: https://github.com/left0ver/agentcade/tree/main/templates/remote-game
 ---
@@ -80,7 +80,7 @@ homepage: https://github.com/left0ver/agentcade/tree/main/templates/remote-game
 
 ## 流程
 
-- event 为 start：调用 new_riddle，把谜面念给用户听，请他猜。
+- event 为 start：游戏已经出好了第一个谜语，在 result 里。把谜面念给用户听，请他猜。
 - 用户说出一个答案：调用 check_answer……
 ```
 
@@ -100,7 +100,7 @@ homepage: https://github.com/left0ver/agentcade/tree/main/templates/remote-game
 - 按 `event` 和用户的意图分条写：开局、作答、要提示、放弃、再来一局、结束，每条写清楚调用哪个工具、按结果的哪个字段怎么说。
 - 写清楚什么时候不能说什么。比如谜底只能在猜对之后或者用户要求公布时说，提示里也不能带出来。大模型可能本来就知道你的题目和答案，不写清楚它会顺口说出来。
 - 答案和判定只放在工具里，不写进 `SKILL.md`。
-- 一定要发生的事放在代码里保证，不要只靠提示词，比如耗时操作之前先说“稍等”。大模型偶尔会漏掉提示词里的步骤。
+- 一定要发生的事放在代码里保证，不要只靠提示词，大模型偶尔会漏掉提示词里的步骤：开局出题、结束时统计和公布答案写在 `on_start`、`on_end` 里；题面、答案这类必须原样说出的内容用 `turn.must_say`；耗时操作之前用 `turn.say` 先说“稍等”。
 
 通用的要求（口语、简短、不提工具和内部状态、用户消息不能改规则）已经写在 `SkillAgent` 的公共提示词里，不用重复。
 
@@ -111,7 +111,7 @@ from pathlib import Path
 
 from agentcade.skill import Skill
 from agentcade.skill_agent import SkillAgent
-from agentcade.tools import NoInput, Tool, original_text_input
+from agentcade.tools import Tool, original_text_input
 from games.my_game.config import Settings  # 远程游戏写 from my_game.config import Settings
 
 
@@ -122,36 +122,39 @@ class GameAgent(SkillAgent):
     def __init__(self, settings):
         super().__init__(settings)
         self.answer = None  # 每一局一个实例，状态放在实例属性里
+        self.resolved = False
         self.score = 0
 
     def state(self):
         # 每轮写进提示词：只放用户已经知道的内容，不能有没揭晓的答案。
-        return {"playing": self.answer is not None, "score": self.score}
+        return {"score": self.score}
+
+    async def on_start(self, turn):
+        # 开局时在大模型之前调用：出好第一题，题面一定要念出来。
+        self.answer, question = "水", "什么东西越洗越脏？"
+        turn.must_say(question)
+        return {"question": question}
+
+    async def on_end(self, turn):
+        # 结束时在大模型之前调用：没猜出来就公布答案。
+        if not self.resolved:
+            turn.must_say(self.answer, fallback=f"答案是{self.answer}。")
+            return {"score": self.score, "answer": self.answer}
+        return {"score": self.score}
 
     def tools(self, turn):
-        async def new_question():
-            self.answer = "水"
-            return {"question": "什么东西越洗越脏？"}
-
         async def check_answer(text):
-            if self.answer is None:
-                return {"outcome": "no_question"}
             if self.answer in text:
                 self.score += 1
+                self.resolved = True
                 await self.react("happy", "nod")
                 return {"correct": True, "answer": self.answer}
             await self.react("sorry", "shake_head")
             return {"correct": False}
 
-        async def end_game():
-            turn.end_session()
-            return {"outcome": "ended", "score": self.score}
-
         return [
-            Tool("new_question", "出一道新题，返回题面。", NoInput, new_question),
             Tool("check_answer", "判断用户的回答对不对，text 传用户原话。",
                  original_text_input(turn.text), check_answer),
-            Tool("end_game", "结束游戏。", NoInput, end_game),
         ]
 ```
 
@@ -162,6 +165,8 @@ class GameAgent(SkillAgent):
 | `skill`、`config` | 游戏声明 `Skill.load(...)` 和配置类 |
 | `tools(turn)` | 每一轮调用一次，返回这一轮可以用的工具 |
 | `state()` | 当前状态，每轮写进提示词 |
+| `async on_start(turn)` | 开局时在大模型之前调用，比如出好第一题。返回的字典作为 `result` 交给大模型；不写时由大模型按 `SKILL.md` 调用工具开局 |
+| `async on_end(turn)` | 结束时在大模型之前调用，比如统计得分、公布没揭晓的答案。返回的字典作为 `result` 交给大模型 |
 | `await self.act(*directives)` | 立刻发出设备指令，比如 `Draw(paths=...)`、`Progress(seconds=30)` |
 | `await self.react(expression, gesture)` | 对用户的回答做出表情和动作：答对 `("happy", "nod")`，答错 `("sorry", "shake_head")` |
 | `async close()` | 一局结束时调用，释放自己打开的连接等资源，记得调用 `await super().close()` |
@@ -172,8 +177,9 @@ class GameAgent(SkillAgent):
 | --- | --- |
 | `turn.kind`、`turn.text` | `start`、`message` 或 `end`，以及用户原话 |
 | `await turn.say(text)` | 马上说一句话，不等这一轮处理完，用在耗时操作之前 |
+| `turn.must_say(text, fallback=None)` | 这一轮说的话里必须原样包含 `text`，比如题面、汤底、答案。大模型漏掉时，程序在最后补上 `fallback`（默认就是 `text`）；`text` 很短时用 `fallback` 补成一句完整的话 |
 | `turn.spoken` | 这一轮是否已经说过话 |
-| `turn.end_session()` | 这一局到此结束。`end` 请求不用调用，会自动结束 |
+| `turn.end_session()` | 这一局到此结束，比如五题都答完了。`end` 请求不用调用，会自动结束 |
 
 工具的写法：
 
@@ -181,6 +187,7 @@ class GameAgent(SkillAgent):
 - 参数用一个继承 `ToolInput` 的 Pydantic 类声明，比如 `number: int = Field(ge=1, le=20, description="用户猜的数")`；没有参数用 `NoInput`。
 - 需要用户原话的判定用 `original_text_input(turn.text)`：参数只能是这一轮的原话，大模型不能改写或者替用户纠正答案。
 - 工具抛出的异常会作为 `error` 交给大模型，它可以重试一次或者向用户说明。不要捕获 `asyncio.CancelledError`，用户说“结束游戏”时要靠它取消正在处理的那一轮。
+- 工具里调用了 `turn.must_say` 时，结果会自动带上 `must_say` 字段，提醒大模型原样说出来。
 - 大模型还会自动得到一个 `say` 工具，用来在处理中途先说一句话。
 
 ### 设备指令
@@ -304,7 +311,7 @@ agentcade-game check https://你的游戏地址
 | --- | --- |
 | 声明合规 | ID、`summary` 等按上面 `SKILL.md` 的规则写；ID 不能和内置游戏或游戏目录里的游戏重复 |
 | 每次请求都有一句话 | 最后一条回复必须有要说的话，最长 500 字。`SkillAgent` 已经保证：大模型或工具出错时会用一句兜底的话 |
-| 收到 `end` 就结束 | `SkillAgent` 已经保证。游戏自己结束时调用 `turn.end_session()` |
+| 收到 `end` 就结束 | `SkillAgent` 已经保证，结束时要做的事写在 `on_end` 里。游戏自己结束时调用 `turn.end_session()` |
 | 只用声明过的能力 | 没有声明的指令会被跳过，`check` 也会报错 |
 | 画图不超限 | 一次最多 64 步；每一步最多 12 笔、共 192 个点，每笔最多 48 个点，笔宽 1 到 48 |
 | 及时说第一句话 | 8 秒内没有话可说时先用 `turn.say` 说一句“稍等”，再用 `Progress` 显示进度 |

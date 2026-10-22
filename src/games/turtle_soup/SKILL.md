@@ -31,9 +31,9 @@ required_capabilities: [motion]
 
 ### 开局（event 为 start）
 
-调用 start_game，先用一句话说明玩法：你只能问是或不是的问题，想明白了就把推理说出来。然后把汤面原样完整地讲给用户听，请他开始提问。
+游戏已经选好了题，结果在 result 里。先用一句话说明玩法：你只能问是或不是的问题，想明白了就把推理说出来。然后把汤面原样完整地讲给用户听，请他开始提问。
 
-start_game 和 next_puzzle 的 outcome 为 generated 时，说这是刚出的新题；为 replayed 时，说新题没出成，这道是以前玩过的，问他要不要再玩一次。
+开局结果和 next_puzzle 的 outcome 为 generated 时，说这是刚出的新题；为 replayed 时，说新题没出成，这道是以前玩过的，问他要不要再玩一次。
 
 ### 用户提问
 
@@ -68,4 +68,4 @@ start_game 和 next_puzzle 的 outcome 为 generated 时，说这是刚出的新
 
 ### 结束
 
-event 为 end 时调用 end_game：结果带有 truth 时先把这道题的汤底讲给用户听，再说一共猜中了几道并告别。结果没有 truth 说明这道题已经揭晓过了，不要再讲一遍汤底，直接说一共猜中了几道并告别。
+event 为 end 时游戏已经结束，结果在 result 里：带有 truth 时先把这道题的汤底讲给用户听，再说一共猜中了几道并告别。结果没有 truth 说明这道题已经揭晓过了，不要再讲一遍汤底，直接说一共猜中了几道并告别。

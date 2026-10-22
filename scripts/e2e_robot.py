@@ -22,6 +22,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 
 from agentcade.config import Settings
+from agentcade.skill_agent import normalize
 from agentcade.speech import QwenSpeech
 
 # 机器人播报用的合成音量较低，经电脑扬声器播放时放大到机器人能够听清。
@@ -160,8 +161,11 @@ def check_soup_start(turn):
     request, problems = game_request(turn, "start", "turtle_soup")
     if request and request.get("ok") and request["result"]["session"] != "active":
         problems.append("开局后会话应当继续")
-    if not turn.tool("turtle_soup", "start_game"):
-        problems.append("游戏没有调用 start_game")
+    start = turn.tool("turtle_soup", "on_start")
+    if not start or not start.get("ok"):
+        problems.append("游戏没有完成开局")
+    elif normalize(start["result"]["surface"]) not in normalize("".join(turn.spoken)):
+        problems.append("开局没有念出汤面")
     return problems
 
 
@@ -199,8 +203,9 @@ def check_end(game_id):
         request, problems = game_request(turn, "end", game_id)
         if request and request.get("ok") and request["result"]["session"] != "ended":
             problems.append("结束后会话应当是 ended")
-        if not turn.tool(game_id, "end_game"):
-            problems.append("游戏没有调用 end_game")
+        end = turn.tool(game_id, "on_end")
+        if not end or not end.get("ok"):
+            problems.append("游戏没有完成结束")
         return problems
     return check
 
