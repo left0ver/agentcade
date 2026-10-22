@@ -110,7 +110,7 @@ from pathlib import Path
 
 from agentcade.skill import Skill
 from agentcade.skill_agent import SkillAgent
-from agentcade.tools import Tool, original_text_input
+from agentcade.tools import tool
 from .config import Settings  # 游戏目录里的模块用相对导入，内置和远程游戏都能用
 
 
@@ -141,20 +141,16 @@ class GameAgent(SkillAgent):
             return {"score": self.score, "answer": self.answer}
         return {"score": self.score}
 
-    def tools(self, turn):
-        async def check_answer(text):
-            if self.answer in text:
-                self.score += 1
-                self.resolved = True
-                await self.react("happy", "nod")
-                return {"correct": True, "answer": self.answer}
-            await self.react("sorry", "shake_head")
-            return {"correct": False}
-
-        return [
-            Tool("check_answer", "判断用户的回答对不对，text 传用户原话。",
-                 original_text_input(turn.text), check_answer),
-        ]
+    @tool("判断用户这一轮说的答案对不对（直接读取用户原话）。")
+    async def check_answer(self, turn):
+        # 工具名就是方法名；判定用 turn.text，也就是用户原话。
+        if self.answer in turn.text:
+            self.score += 1
+            self.resolved = True
+            await self.react("happy", "nod")
+            return {"correct": True, "answer": self.answer}
+        await self.react("sorry", "shake_head")
+        return {"correct": False}
 ```
 
 `GameAgent` 的成员：
@@ -162,7 +158,7 @@ class GameAgent(SkillAgent):
 | 成员 | 作用 |
 | --- | --- |
 | `skill`、`config` | 游戏声明 `Skill.load(...)` 和配置类 |
-| `tools(turn)` | 每一轮调用一次，返回这一轮可以用的工具 |
+| `@tool("说明", name=None)` | 把方法声明成工具，写法见下面的“工具的写法” |
 | `state()` | 当前状态，每轮写进提示词 |
 | `async on_start(turn)` | 开局时在大模型之前调用，比如出好第一题。返回的字典作为 `result` 交给大模型；不写时由大模型按 `SKILL.md` 调用工具开局 |
 | `async on_end(turn)` | 结束时在大模型之前调用，比如统计得分、公布没揭晓的答案。返回的字典作为 `result` 交给大模型 |
@@ -178,13 +174,38 @@ class GameAgent(SkillAgent):
 | `await turn.say(text)` | 马上说一句话，不等这一轮处理完，用在耗时操作之前 |
 | `turn.must_say(text, fallback=None)` | 这一轮说的话里必须原样包含 `text`，比如题面、汤底、答案。大模型漏掉时，程序在最后补上 `fallback`（默认就是 `text`）；`text` 很短时用 `fallback` 补成一句完整的话 |
 | `turn.spoken` | 这一轮是否已经说过话 |
+| `turn.judged` | 判定类工具判过这条输入后设为 `True`，开头检查它，保证每条输入只判一次，比如大模型对同一句话先后调用了“提问”和“猜答案” |
 | `turn.end_session()` | 这一局到此结束，比如五题都答完了。`end` 请求不用调用，会自动结束 |
 
 工具的写法：
 
-- 处理函数是 `async` 函数，返回能转成 JSON 的字典。字段写明确，比如 `outcome`、`correct`，`SKILL.md` 按字段写怎么说。
-- 参数用一个继承 `ToolInput` 的 Pydantic 类声明，比如 `number: int = Field(ge=1, le=20, description="用户猜的数")`；没有参数用 `NoInput`。
-- 需要用户原话的判定用 `original_text_input(turn.text)`：参数只能是这一轮的原话，大模型不能改写或者替用户纠正答案。
+```python
+from typing import Annotated, Literal
+from pydantic import Field
+from agentcade.tools import tool
+
+@tool("取得下一条提示。")                       # 工具名就是方法名 get_hint
+def get_hint(self):
+    ...
+
+@tool("用户放弃时公布答案。", name="give_up")    # 工具名是 give_up
+def reveal(self, turn):
+    ...
+
+@tool("用户猜一个数。")
+def guess(self, number: Annotated[int, Field(ge=1, le=20, description="用户猜的数")]):
+    ...
+
+@tool("出一道新题，用户没说难度时用 easy。")
+async def new_question(self, turn, level: Literal["easy", "hard"] = "easy"):
+    ...
+```
+
+- `@tool` 的第一个参数是说明，原样发给大模型。工具名用 `name=` 指定，不写就用方法名，只能用字母、数字、下划线和短横线。
+- 参数 `turn` 由框架传入当前这一轮，不出现在工具定义里。其他参数由大模型填写，必须写类型注解：常用 `str`、`int`、`bool`、`Literal[...]`；有默认值的是可选参数；取值范围和说明写成 `Annotated[类型, Field(...)]`。类型不对、多传或者少传参数时，错误交还给大模型重试。
+- 需要用户原话的判定（答案、提问、推理）不要设参数让大模型转述，直接读 `turn.text`，大模型就不能改写或者替用户纠正答案。说明里写上“直接读取用户原话”，大模型就知道不用传。
+- 方法可以是普通方法，也可以是 `async` 的，返回能转成 JSON 的字典。字段写明确，比如 `outcome`、`correct`，`SKILL.md` 按字段写怎么说。
+- 工具定义在游戏加载时生成一次，每一轮都一样。工具名不合法、重名（包括和内置的 `say` 重名）、参数没写类型注解，加载游戏时就会报错，`chat` 和 `check` 一启动就能看到。
 - 工具抛出的异常会作为 `error` 交给大模型，它可以重试一次或者向用户说明。不要捕获 `asyncio.CancelledError`，用户说“结束游戏”时要靠它取消正在处理的那一轮。
 - 工具里调用了 `turn.must_say` 时，结果会自动带上 `must_say` 字段，提醒大模型原样说出来。
 - 大模型还会自动得到一个 `say` 工具，用来在处理中途先说一句话。

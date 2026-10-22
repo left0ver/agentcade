@@ -10,7 +10,7 @@ from pathlib import Path
 from agentcade.protocol import Draw, Gesture
 from agentcade.skill import Skill
 from agentcade.skill_agent import SkillAgent
-from agentcade.tools import NoInput, Tool, original_text_input
+from agentcade.tools import tool
 from agentcade.vector import Stroke, encode_vector
 
 from .config import Settings
@@ -71,30 +71,28 @@ class GameAgent(SkillAgent):
             return {"solved": self.solved, "answer": self.reveal(turn)}
         return {"solved": self.solved}
 
-    def tools(self, turn):
-        async def new_riddle():
-            return self.ask(turn)
+    # 工具名就是方法名，也可以用 @tool("说明", name="...") 另起一个。参数 turn 由框架传入，
+    # 其余参数由大模型填写，要写类型注解，例如 number: Annotated[int, Field(ge=1, le=20)]。
+    @tool("出一个新谜语，返回谜面。")
+    def new_riddle(self, turn):
+        return self.ask(turn)
 
-        async def check_answer(text):
-            if self.riddle is None:
-                return {"outcome": "no_riddle"}
-            if any(answer in text for answer in self.riddle[1]):
-                self.solved += 1
-                await self.act(Gesture(name="nod"), Draw(paths=star()))
-                return {"correct": True, "answer": self.reveal(turn), **self.state()}
-            await self.act(Gesture(name="shake_head"))
-            return {"correct": False}
+    @tool("判断用户这一轮说的谜底对不对（直接读取用户原话）。")
+    async def check_answer(self, turn):
+        if self.riddle is None:
+            return {"outcome": "no_riddle"}
+        # 判定用 turn.text，也就是用户原话，不让大模型转述或者替用户纠正。
+        if any(answer in turn.text for answer in self.riddle[1]):
+            self.solved += 1
+            await self.act(Gesture(name="nod"), Draw(paths=star()))
+            return {"correct": True, "answer": self.reveal(turn), **self.state()}
+        await self.act(Gesture(name="shake_head"))
+        return {"correct": False}
 
-        async def get_hint():
-            return {"hint": self.riddle[2]} if self.riddle else {"outcome": "no_riddle"}
+    @tool("取得当前谜语的提示。")
+    def get_hint(self):
+        return {"hint": self.riddle[2]} if self.riddle else {"outcome": "no_riddle"}
 
-        async def reveal_answer():
-            return {"answer": self.reveal(turn)} if self.riddle else {"outcome": "no_riddle"}
-
-        return [
-            Tool("new_riddle", "出一个新谜语，返回谜面。", NoInput, new_riddle),
-            Tool("check_answer", "判断用户说的谜底对不对，text 传用户原话。",
-                 original_text_input(turn.text), check_answer),
-            Tool("get_hint", "取得当前谜语的提示。", NoInput, get_hint),
-            Tool("reveal_answer", "用户放弃时公布谜底。", NoInput, reveal_answer),
-        ]
+    @tool("用户放弃时公布谜底。")
+    def reveal_answer(self, turn):
+        return {"answer": self.reveal(turn)} if self.riddle else {"outcome": "no_riddle"}

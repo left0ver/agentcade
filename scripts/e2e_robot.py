@@ -170,12 +170,12 @@ def check_soup_start(turn):
 
 
 def check_question(turn):
-    _, problems = game_request(turn, "message", "turtle_soup")
+    request, problems = game_request(turn, "message", "turtle_soup")
     call = turn.tool("turtle_soup", "ask_question")
     if not call or not call.get("ok"):
         problems.append("游戏没有成功调用 ask_question")
-    elif call["arguments"].get("text") != turn.heard:
-        problems.append("提交的提问不是用户原话")
+    elif request and request["request"]["text"] != turn.heard:
+        problems.append("发给游戏的提问不是用户原话")
     elif call["result"].get("answer") not in {"yes", "no", "irrelevant", "not_question", "unsure"}:
         problems.append(f"回答结果异常：{call['result'].get('answer')}")
     return problems
@@ -225,12 +225,12 @@ def check_animal_start(turn):
 
 
 def check_answer(turn):
-    _, problems = game_request(turn, "message", "guess_animal")
+    request, problems = game_request(turn, "message", "guess_animal")
     call = turn.tool("guess_animal", "submit_answer")
     if not call or not call.get("ok"):
         problems.append("游戏没有成功调用 submit_answer")
-    elif call["arguments"].get("text") != turn.heard:
-        problems.append("提交的答案不是用户原话")
+    elif request and request["request"]["text"] != turn.heard:
+        problems.append("发给游戏的答案不是用户原话")
     elif call["result"].get("outcome") not in {"correct", "incorrect", "unclear"}:
         problems.append(f"判定结果异常：{call['result'].get('outcome')}")
     return problems

@@ -17,7 +17,7 @@ homepage: https://github.com/left0ver/agentcade/tree/main/templates/remote-game
 ## 流程
 
 - event 为 start：游戏已经出好了第一个谜语，在 result 里。把谜面念给用户听，请他猜。
-- 用户说出一个答案：调用 check_answer，text 传用户原话。correct 为 true 就恭喜他，说出谜底，问他要不要再来一个；为 false 就只说不对、请他再猜，不要加任何线索，用户要提示时才给。
+- 用户说出一个答案：调用 check_answer。correct 为 true 就恭喜他，说出谜底，问他要不要再来一个；为 false 就只说不对、请他再猜，不要加任何线索，用户要提示时才给。
 - 用户想要提示：调用 get_hint，把提示告诉他。
 - 用户放弃、想知道谜底：调用 reveal_answer，把谜底告诉他，问他要不要再来一个。
 - 用户想再来一个：调用 new_riddle，念新的谜面。

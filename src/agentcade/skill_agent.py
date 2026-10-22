@@ -1,9 +1,9 @@
+import inspect
 import json
 import logging
 import unicodedata
 from collections.abc import Awaitable, Callable
-from dataclasses import replace
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import Field
 
@@ -11,7 +11,7 @@ import observability
 from agentcade.protocol import Clear, Directive, Expression, GameInput, GameReply, Gesture
 from agentcade.providers import OpenAIProvider
 from agentcade.skill import Skill
-from agentcade.tools import Tool, ToolInput, ToolRegistry
+from agentcade.tools import TURN_PARAMETER, Tool, ToolRegistry, ToolSpec, collect_tools, tool
 
 logger = logging.getLogger(__name__)
 
@@ -48,17 +48,13 @@ FALLBACK_REPLIES = {
 }
 
 
-class SayInput(ToolInput):
-    text: str = Field(min_length=1, max_length=120, description="立刻对用户说的一句话")
-
-
 def normalize(text: str) -> str:
     """去掉空白、标点和符号，用来判断一段话有没有被说出来。"""
     return "".join(char for char in text if unicodedata.category(char)[0] not in "PZSC")
 
 
 class Turn:
-    """一次请求的上下文：用户原话、中途回复、必须说出的内容和本局结束标记。"""
+    """一次请求的上下文：用户原话、中途回复、必须说出的内容、判定标记和本局结束标记。"""
 
     def __init__(self, request: GameInput, emit: Emit):
         self.kind, self.text = request.kind, request.text
@@ -66,6 +62,8 @@ class Turn:
         self.spoken = False
         self.said: list[str] = []
         self.required: list[tuple[str, str]] = []
+        # 判定类工具判过这条用户输入后设为 True，保证每条输入只判一次。
+        self.judged = False
         self.ended = False
 
     async def say(self, text: str) -> None:
@@ -90,18 +88,29 @@ class Turn:
 
 
 class SkillAgent:
-    """由 SKILL.md 驱动的 ReAct 游戏 Agent，子类提供 skill、游戏工具和状态快照。"""
+    """由 SKILL.md 驱动的 ReAct 游戏 Agent，子类提供 skill、用 @tool 声明的工具和状态快照。"""
 
     skill: Skill
     memory_turns = 16
+    # 定义子类时收集，不用创建实例就能读到工具列表。
+    tool_specs: tuple[ToolSpec, ...] = ()
+
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        if "tools" in vars(cls):
+            raise TypeError(f"{cls.__qualname__}.tools(turn) 已经不再使用，工具改用 @tool 声明，见游戏开发指南")
+        cls.tool_specs = collect_tools(cls)
 
     def __init__(self, settings):
         self.provider = OpenAIProvider(settings.llm)
         self.memory: list[list[dict]] = []
         self.turn: Turn | None = None
 
-    def tools(self, turn: Turn) -> list[Tool]:
-        raise NotImplementedError
+    @tool("立刻对用户说一句话，然后继续处理。用于耗时操作之前的告知。", name="say")
+    async def say_now(self, turn: Turn,
+                      text: Annotated[str, Field(min_length=1, max_length=120, description="立刻对用户说的一句话")]):
+        await turn.say(text)
+        return {"spoken": True}
 
     def state(self) -> dict:
         return {}
@@ -157,16 +166,21 @@ class SkillAgent:
             outcome["result"] = result
         return result
 
-    def marked(self, tool: Tool, turn: Turn) -> Tool:
-        """工具声明了必须说出的内容时，在结果里带上 must_say，提醒大模型原样说出来。"""
+    def bind(self, spec: ToolSpec, turn: Turn) -> Tool:
+        """把声明的工具用在这一轮：需要时传入 turn；工具声明了必须说出的内容时，
+        在结果里带上 must_say，提醒大模型原样说出来。"""
 
         async def handler(**arguments):
             before = len(turn.required)
-            result = await tool.handler(**arguments)
+            if spec.takes_turn:
+                arguments[TURN_PARAMETER] = turn
+            result = spec.function(self, **arguments)
+            if inspect.isawaitable(result):
+                result = await result
             added = [text for text, _ in turn.required[before:]]
             return {**result, "must_say": added} if added and isinstance(result, dict) else result
 
-        return replace(tool, handler=handler)
+        return Tool(spec.name, spec.description, spec.inputs, handler)
 
     async def complete(self, turn: Turn, text: str) -> str:
         """大模型漏掉了必须说出的内容时，补在最后一条回复的末尾。"""
@@ -187,17 +201,9 @@ class SkillAgent:
         return (text + addition)[:REPLY_LIMIT]
 
     async def respond(self, request: GameInput, turn: Turn) -> GameReply:
-
-        async def say(text):
-            await turn.say(text)
-            return {"spoken": True}
-
         try:
             result = await self.prepare(request, turn)
-            registry = ToolRegistry([
-                Tool("say", "立刻对用户说一句话，然后继续处理。用于耗时操作之前的告知。", SayInput, say),
-                *(self.marked(tool, turn) for tool in self.tools(turn)),
-            ])
+            registry = ToolRegistry([self.bind(spec, turn) for spec in self.tool_specs])
             # 系统提示词在钩子之后生成，状态里已经有开局选好的题目。
             messages = [
                 {"role": "system", "content": self.system_prompt()},

@@ -6,7 +6,7 @@ from pathlib import Path
 from agentcade.protocol import Gesture
 from agentcade.skill import Skill
 from agentcade.skill_agent import SkillAgent
-from agentcade.tools import NoInput, Tool, original_text_input
+from agentcade.tools import tool
 
 from .config import Settings
 from .generator import PuzzleGenerator
@@ -145,85 +145,74 @@ class GameAgent(SkillAgent):
         return {"outcome": "ended", **({"truth": self.puzzle.truth} if unfinished else {}),
                 **self.state()}
 
-    def tools(self, turn):
-        judged = False
+    def unavailable(self):
+        if self.ended:
+            return "game_over"
+        if self.puzzle is None:
+            return "not_started"
+        return "puzzle_resolved" if self.resolved else None
 
-        def unavailable():
-            if self.ended:
-                return "game_over"
-            if self.puzzle is None:
-                return "not_started"
-            return "puzzle_resolved" if self.resolved else None
-
-        async def ask_question(text):
-            nonlocal judged
-            reason = unavailable()
-            if reason or judged:
-                return {"outcome": reason or "already_judged", **self.state()}
-            answer = await self.judge.answer(self.puzzle, text)
-            if answer in {"not_question", "unsure"}:
-                # 没有给出是或不是，不算一次提问，这条输入还可以改为提交推理。
-                return {"answer": answer, **self.state()}
-            judged = True
-            self.questions += 1
-            if answer in GESTURES:
-                await self.act(Gesture(name=GESTURES[answer]))
+    @tool("按汤底回答用户这一轮的是非提问（直接读取用户原话），结果为 yes、no、irrelevant、"
+          "not_question 或 unsure；每条用户输入只能判断一次。")
+    async def ask_question(self, turn):
+        reason = self.unavailable()
+        if reason or turn.judged:
+            return {"outcome": reason or "already_judged", **self.state()}
+        answer = await self.judge.answer(self.puzzle, turn.text)
+        if answer in {"not_question", "unsure"}:
+            # 没有给出是或不是，不算一次提问，这条输入还可以改为提交推理。
             return {"answer": answer, **self.state()}
+        turn.judged = True
+        self.questions += 1
+        if answer in GESTURES:
+            await self.act(Gesture(name=GESTURES[answer]))
+        return {"answer": answer, **self.state()}
 
-        async def submit_solution(text):
-            nonlocal judged
-            reason = unavailable()
-            if reason or judged:
-                return {"outcome": reason or "already_judged", **self.state()}
-            verdict = await self.judge.verify(self.puzzle, text)
-            if verdict == "unsure":
-                return {"verdict": verdict, **self.state()}
-            judged = True
-            if verdict == "solved":
-                self.solved += 1
-                await self.react("happy", "nod")
-                return {"verdict": verdict, **self.reveal(turn, "solved")}
-            if verdict == "wrong":
-                await self.act(Gesture(name="shake_head"))
+    @tool("判断用户这一轮说出的推理有没有猜中汤底（直接读取用户原话），结果为 solved、partial、"
+          "wrong 或 unsure；猜中时返回汤底。每条用户输入只能判断一次。")
+    async def submit_solution(self, turn):
+        reason = self.unavailable()
+        if reason or turn.judged:
+            return {"outcome": reason or "already_judged", **self.state()}
+        verdict = await self.judge.verify(self.puzzle, turn.text)
+        if verdict == "unsure":
             return {"verdict": verdict, **self.state()}
+        turn.judged = True
+        if verdict == "solved":
+            self.solved += 1
+            await self.react("happy", "nod")
+            return {"verdict": verdict, **self.reveal(turn, "solved")}
+        if verdict == "wrong":
+            await self.act(Gesture(name="shake_head"))
+        return {"verdict": verdict, **self.state()}
 
-        async def get_hint():
-            reason = unavailable()
-            if reason:
-                return {"outcome": reason, **self.state()}
-            if self.hints == len(self.puzzle.hints):
-                return {"outcome": "hints_exhausted", **self.state()}
-            hint = self.puzzle.hints[self.hints]
-            self.hints += 1
-            return {"outcome": "hint", "hint": hint, **self.state()}
+    @tool("取得这道题的下一条提示，每题三条。")
+    def get_hint(self):
+        reason = self.unavailable()
+        if reason:
+            return {"outcome": reason, **self.state()}
+        if self.hints == len(self.puzzle.hints):
+            return {"outcome": "hints_exhausted", **self.state()}
+        hint = self.puzzle.hints[self.hints]
+        self.hints += 1
+        return {"outcome": "hint", "hint": hint, **self.state()}
 
-        async def reveal_truth():
-            reason = unavailable()
-            if reason:
-                return {"outcome": reason, **self.state()}
-            return self.reveal(turn, "revealed")
+    @tool("用户放弃时公布汤底，这道题结束。")
+    def reveal_truth(self, turn):
+        reason = self.unavailable()
+        if reason:
+            return {"outcome": reason, **self.state()}
+        return self.reveal(turn, "revealed")
 
-        async def next_puzzle():
-            if self.ended or self.puzzle is None:
-                return {"outcome": "game_over" if self.ended else "not_started", **self.state()}
-            if not self.resolved:
-                return {"outcome": "puzzle_unresolved", **self.state()}
-            result = await self.serve(turn)
-            turn.must_say(self.puzzle.surface)
-            return result
-
-        answer_input = original_text_input(turn.text)
-        return [
-            Tool("ask_question", "按汤底回答用户的是非提问，结果为 yes、no、irrelevant、"
-                 "not_question 或 unsure；每条用户输入只能判断一次。", answer_input, ask_question),
-            Tool("submit_solution", "判断用户说出的推理有没有猜中汤底，结果为 solved、partial、"
-                 "wrong 或 unsure；猜中时返回汤底。每条用户输入只能判断一次。",
-                 answer_input, submit_solution),
-            Tool("get_hint", "取得这道题的下一条提示，每题三条。", NoInput, get_hint),
-            Tool("reveal_truth", "用户放弃时公布汤底，这道题结束。", NoInput, reveal_truth),
-            Tool("next_puzzle", "这道题揭晓之后换一道没玩过的题，返回汤面；题都玩过时会现场出一道新题。",
-                 NoInput, next_puzzle),
-        ]
+    @tool("这道题揭晓之后换一道没玩过的题，返回汤面；题都玩过时会现场出一道新题。")
+    async def next_puzzle(self, turn):
+        if self.ended or self.puzzle is None:
+            return {"outcome": "game_over" if self.ended else "not_started", **self.state()}
+        if not self.resolved:
+            return {"outcome": "puzzle_unresolved", **self.state()}
+        result = await self.serve(turn)
+        turn.must_say(self.puzzle.surface)
+        return result
 
     async def close(self):
         try:

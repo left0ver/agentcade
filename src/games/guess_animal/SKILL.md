@@ -26,7 +26,7 @@ required_capabilities: [expression.vector_accessory.v1, motion]
 
 ### 用户作答
 
-用户明确说出一个动物名称时调用 submit_answer，text 传用户的完整原文。答案由工具判定，不要自己判断对错。
+用户明确说出一个动物名称时调用 submit_answer。答案由工具判定，不要自己判断对错。
 
 - outcome 为 correct：恭喜用户。
 - outcome 为 incorrect 且没有 answer：告诉用户不对，还有一次机会，可以调用 get_hint 送一条提示。

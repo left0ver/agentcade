@@ -4,7 +4,7 @@ from pathlib import Path
 from agentcade.protocol import Draw, Progress
 from agentcade.skill import Skill
 from agentcade.skill_agent import SkillAgent
-from agentcade.tools import NoInput, Tool, original_text_input
+from agentcade.tools import tool
 
 from .config import Settings
 from .game import Decision, Game
@@ -89,81 +89,72 @@ class GameAgent(SkillAgent):
         return {"outcome": "ended", **({"answer": animal.name} if unfinished else {}),
                 **self.state()}
 
-    def tools(self, turn):
-        answered = False
+    def unavailable(self, *, resolved=False):
+        if not self.game.active:
+            return "game_over"
+        if self.game.animal is None:
+            return "question_not_ready"
+        if self.game.resolved != resolved:
+            return "question_resolved" if self.game.resolved else "question_unresolved"
+        return None
 
-        def unavailable(*, resolved=False):
-            if not self.game.active:
-                return "game_over"
-            if self.game.animal is None:
-                return "question_not_ready"
-            if self.game.resolved != resolved:
-                return "question_resolved" if self.game.resolved else "question_unresolved"
-            return None
+    @tool("取得当前题目的下一条提示。")
+    def get_hint(self):
+        reason = self.unavailable()
+        if reason:
+            return {"outcome": reason, **self.state()}
+        return self.facts(self.game.handle(Decision.HINT, self.game.revision))
 
-        async def get_hint():
-            reason = unavailable()
-            if reason:
-                return {"outcome": reason, **self.state()}
-            return self.facts(self.game.handle(Decision.HINT, self.game.revision))
-
-        async def submit_answer(text):
-            nonlocal answered
-            reason = unavailable()
-            if reason or answered:
-                return {"outcome": reason or "already_answered", **self.state()}
-            decision = await self.judge.decide(text, self.game.animal)
-            answered = True
-            if decision not in {Decision.CORRECT, Decision.INCORRECT}:
-                return {"outcome": "unclear", **self.state()}
-            reply = self.game.handle(decision, self.game.revision)
-            # 答对点头并显示开心，答错摇头并显示抱歉，由程序在判定时直接触发。
-            if decision is Decision.CORRECT:
-                await self.react("happy", "nod")
-            else:
-                await self.react("sorry", "shake_head")
-                if reply.answer:
-                    self.announce(turn, reply.answer)
-            if self.game.resolved and self.game.index + 1 == self.game.rounds:
-                self.game.advance()
-                turn.end_session()
-            return self.facts(reply)
-
-        async def skip_question():
-            reason = unavailable()
-            if reason:
-                return {"outcome": reason, **self.state()}
-            reply = self.game.handle(Decision.SKIP, self.game.revision)
-            if self.game.index + 1 == self.game.rounds:
-                self.game.advance()
-                turn.end_session()
+    @tool("判定用户这一轮说的动物答案（直接读取用户原话），并更新得分和机会；每条用户输入只能提交一次。")
+    async def submit_answer(self, turn):
+        reason = self.unavailable()
+        if reason or turn.judged:
+            return {"outcome": reason or "already_answered", **self.state()}
+        decision = await self.judge.decide(turn.text, self.game.animal)
+        turn.judged = True
+        if decision not in {Decision.CORRECT, Decision.INCORRECT}:
+            return {"outcome": "unclear", **self.state()}
+        reply = self.game.handle(decision, self.game.revision)
+        # 答对点头并显示开心，答错摇头并显示抱歉，由程序在判定时直接触发。
+        if decision is Decision.CORRECT:
+            await self.react("happy", "nod")
+        else:
+            await self.react("sorry", "shake_head")
+            if reply.answer:
                 self.announce(turn, reply.answer)
-                return self.facts(reply)
-            # 跳过后直接出下一题，用户不用再说一次：先公布答案，再生成。
-            said = f"这题的答案是{reply.answer}。我来画下一题，稍等一下。"
-            await turn.say(said)
+        if self.game.resolved and self.game.index + 1 == self.game.rounds:
             self.game.advance()
-            return {**await self.generate(turn), "skipped_answer": reply.answer, "said": said}
+            turn.end_session()
+        return self.facts(reply)
 
-        async def next_question():
-            # 上一次没有生成成功时，题目仍然待出，直接重新生成。
-            if self.game.active and self.game.animal is None:
-                return await self.generate(turn)
-            reason = unavailable(resolved=True)
-            if reason:
-                return {"outcome": reason, **self.state()}
+    @tool("跳过当前题目：把答案告诉用户，然后直接画好下一题并展示，需要等待一段时间；"
+          "跳过最后一题则结束整局。")
+    async def skip_question(self, turn):
+        reason = self.unavailable()
+        if reason:
+            return {"outcome": reason, **self.state()}
+        reply = self.game.handle(Decision.SKIP, self.game.revision)
+        if self.game.index + 1 == self.game.rounds:
             self.game.advance()
+            turn.end_session()
+            self.announce(turn, reply.answer)
+            return self.facts(reply)
+        # 跳过后直接出下一题，用户不用再说一次：先公布答案，再生成。
+        said = f"这题的答案是{reply.answer}。我来画下一题，稍等一下。"
+        await turn.say(said)
+        self.game.advance()
+        return {**await self.generate(turn), "skipped_answer": reply.answer, "said": said}
+
+    @tool("当前题目结束后画好下一题并展示，需要等待一段时间。")
+    async def next_question(self, turn):
+        # 上一次没有生成成功时，题目仍然待出，直接重新生成。
+        if self.game.active and self.game.animal is None:
             return await self.generate(turn)
-
-        return [
-            Tool("get_hint", "取得当前题目的下一条提示。", NoInput, get_hint),
-            Tool("submit_answer", "判定用户的动物答案并更新得分和机会；每条用户输入只能提交一次。",
-                 original_text_input(turn.text), submit_answer),
-            Tool("skip_question", "跳过当前题目：把答案告诉用户，然后直接画好下一题并展示，需要等待一段时间；"
-                 "跳过最后一题则结束整局。", NoInput, skip_question),
-            Tool("next_question", "当前题目结束后画好下一题并展示，需要等待一段时间。",
-                 NoInput, next_question),
-        ]
+        reason = self.unavailable(resolved=True)
+        if reason:
+            return {"outcome": reason, **self.state()}
+        self.game.advance()
+        return await self.generate(turn)
 
     async def close(self):
         try:
