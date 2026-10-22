@@ -381,7 +381,11 @@ async def chat(args) -> None:
                 if line == "/quit":
                     return
                 print("（这一局结束了，按回车重新开一局，/quit 退出）", flush=True)
-                if (await asyncio.to_thread(input, "")).strip() == "/quit":
+                try:
+                    if (await asyncio.to_thread(input, "")).strip() == "/quit":
+                        return
+                except EOFError:
+                    # 从文件或管道读入的对话读完了。
                     return
                 continue
             if not line:
