@@ -8,12 +8,12 @@
       "url": "https://riddle.leftover.cn",
       "author": "left0ver",
       "homepage": "https://github.com/left0ver/agentcade/tree/main/templates/riddle",
-      "version": "1.0.1",
+      "version": "1.0.2",
       "capabilities": [
         "motion",
-        "expression.vector_accessory.v1"
+        "expression.runtime.v3"
       ],
-      "reviewed_at": "2026-10-21",
+      "reviewed_at": "2026-10-23",
       "status": "listed"
     }
   ]
