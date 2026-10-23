@@ -1,6 +1,6 @@
 [project]
 name = "agentcade"
-version = "0.1.0"
+version = "0.2.0"
 description = "与机器人聊天，玩你画我猜和海龟汤，通过 A2A 接入更多游戏。"
 readme = "README.md"
 authors = [
