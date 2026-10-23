@@ -6,3 +6,4 @@ src/agentcade/publish.py
 templates/
 catalog/
 .github/
+assets/preview_video.mp4
