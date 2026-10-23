@@ -10,7 +10,7 @@ pinned: false
 
 # 猜谜语：Agentcade 远程游戏模板
 
-一个可以单独部署的 Agentcade 游戏。部署好之后，任何人在小懒的设置页面里粘贴它的地址，确认权限，就能对机器人说“我想玩猜谜语”。
+一个可以单独部署的 Agentcade 游戏，开发自己的远程游戏时复制这个目录作为起点。部署好之后，任何人在小懒的设置页面里粘贴它的地址，确认权限，就能对机器人说“我想玩猜谜语”。
 
 怎么写游戏、怎么测试、有哪些要求，见[游戏开发指南](https://github.com/left0ver/agentcade/blob/main/docs/game-development.md)。
 
@@ -20,22 +20,23 @@ pinned: false
 
 | 文件 | 内容 |
 | --- | --- |
-| `riddle/SKILL.md` | 游戏声明和流程。`id` 和目录名一致；`summary` 是开机问候里念的简短介绍（30 字以内，句末不带标点）；`required_capabilities` 声明要让机器人做什么；`version`、`author`、`homepage` 会显示在安装确认页上 |
-| `riddle/agent.py` | 入口类 `GameAgent`：用 `@tool` 声明的工具、状态，用 `self.robot` 控制机器人（写法和机器人 SDK 一样） |
-| `riddle/settings.yaml`、`riddle/config.py` | 游戏读取的配置项 |
+| `SKILL.md` | 游戏声明和流程。`id` 是游戏 ID；`summary` 是开机问候里念的简短介绍（30 字以内，句末不带标点）；`required_capabilities` 声明要让机器人做什么；`version`、`author`、`homepage` 会显示在安装确认页上 |
+| `agent.py` | 入口类 `GameAgent`：用 `@tool` 声明的工具、状态，用 `self.robot` 控制机器人（写法和机器人 SDK 一样） |
+| `settings.yaml`、`config.py`、`.env.example` | 游戏读取的配置项 |
+| `requirements.txt` | Python 依赖，至少要有 agentcade |
 | `Dockerfile` | 安装依赖，运行 `agentcade-game serve` |
 
-改成你自己的游戏：把 `riddle` 目录改成你的游戏 ID（小写字母、数字和下划线），同时改 `SKILL.md` 里的 `id`、`author`、`homepage`，以及 `Dockerfile` 里的两处 `riddle`。游戏目录里的模块互相导入时用相对导入（`from .config import Settings`），改名后不用改。
+改成你自己的游戏：复制整个目录到你自己的仓库，改 `SKILL.md` 里的 `id`（小写字母、数字和下划线）、`author`、`homepage`，再改题目、工具和流程。目录叫什么都可以；模块互相导入时用相对导入（`from .config import Settings`），`Dockerfile` 也不用改。
 
 ## 本地调试
 
 ```bash
 pip install -r requirements.txt
-cp riddle/.env.example riddle/.env       # 填写大模型的 API Key
+cp .env.example .env                # 填写大模型的 API Key
 
-agentcade-game chat riddle               # 文字模拟器：不用机器人，打字和游戏对话
-agentcade-game check riddle              # 合规检查：名片和完整的一局
-agentcade-game serve riddle --port 7860  # 运行服务，小懒的设置页面里填 http://127.0.0.1:7860
+agentcade-game chat .               # 文字模拟器：不用机器人，打字和游戏对话
+agentcade-game check .              # 合规检查：名片、SKILL.md 和工具、完整的一局
+agentcade-game serve . --port 7860  # 运行服务，小懒的设置页面里填 http://127.0.0.1:7860
 ```
 
 ## 部署到 Hugging Face Space

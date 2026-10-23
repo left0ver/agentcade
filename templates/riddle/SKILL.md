@@ -7,7 +7,7 @@ summary: 我出一个谜语，你来猜谜底
 required_capabilities: [motion, expression.runtime.v3]
 version: "1.0.2"
 author: left0ver
-homepage: https://github.com/left0ver/agentcade/tree/main/templates/remote-game
+homepage: https://github.com/left0ver/agentcade/tree/main/templates/riddle
 ---
 
 # 猜谜语

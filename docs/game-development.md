@@ -8,7 +8,7 @@
 
 | | 内置游戏 | 远程游戏 |
 | --- | --- | --- |
-| 代码放在哪 | 这个仓库的 `src/games/<游戏 ID>/` | 你自己的仓库，从 [`templates/remote-game/`](../templates/remote-game) 开始 |
+| 代码放在哪 | 这个仓库的 `src/games/<游戏 ID>/` | 你自己的仓库，从模板 [`templates/riddle/`](../templates/riddle) 开始 |
 | 运行在哪 | 用户的电脑上，随应用启动 | 你的服务器上，一个服务同时给很多人玩 |
 | 大模型等服务的费用 | 用户在设置页面填自己的密钥 | 你来付，用户不用填 |
 | 用户怎么得到 | 随应用发布，重启应用就有 | 在设置页面的“游戏”栏粘贴地址，或者从游戏目录安装，不用重启 |
@@ -37,18 +37,9 @@ sequenceDiagram
 
 ## 写一个游戏
 
-最快的办法是复制猜谜语模板 [`templates/remote-game/riddle/`](../templates/remote-game/riddle)。它的代码不到 100 行，有出题、判定、提示、点头和画图，改题目和工具就是一个新游戏。
+**远程游戏**：复制猜谜语模板 [`templates/riddle/`](../templates/riddle) 到你自己的仓库，按它的 [README](../templates/riddle/README.md) 改名、调试和部署。模板的代码不到 100 行，有出题、判定、提示、点头和画图，改题目和工具就是一个新游戏。
 
-**内置游戏**：
-
-```bash
-cp -r templates/remote-game/riddle src/games/my_game
-```
-
-1. 把 `SKILL.md` 里的 `id` 改成 `my_game`，再改 `name`、`summary` 和流程。
-2. 运行 `uv run python scripts/write_env_examples.py`，生成 `.env.example`，复制成 `.env` 并填上密钥。
-
-**远程游戏**：复制整个 `templates/remote-game/` 到你自己的仓库，按它的 [README](../templates/remote-game/README.md) 改名、调试和部署。
+**内置游戏**：在 `src/games/` 下新建一个目录，目录名就是游戏 ID，按下面的说明放进这些文件；写好后运行 `uv run python scripts/write_env_examples.py` 生成 `.env.example`，复制成 `.env` 并填上密钥。
 
 一个游戏目录里有这些文件：
 
@@ -72,7 +63,7 @@ summary: 我出一个谜语，你来猜谜底
 required_capabilities: [motion, expression.runtime.v3]
 version: "1.0.2"
 author: left0ver
-homepage: https://github.com/left0ver/agentcade/tree/main/templates/remote-game
+homepage: https://github.com/left0ver/agentcade/tree/main/templates/riddle
 ---
 
 # 猜谜语
@@ -279,7 +270,7 @@ uv run ruff check app.py src scripts templates
 
 ```bash
 uv run agentcade-game chat src/games/my_game          # 内置游戏
-uv run agentcade-game chat templates/remote-game/riddle
+uv run agentcade-game chat templates/riddle
 uv run agentcade-game chat https://你的游戏地址          # 已经部署的远程游戏
 ```
 
@@ -317,8 +308,8 @@ uv run agentcade-game check src/games/my_game
 `chat` 直接和游戏对话；`play` 和真机上一样经过主 Agent，接入所有内置游戏和已安装的远程游戏，只是用打字代替说话，回复和设备指令打印出来，不用机器人：
 
 ```bash
-uv run agentcade-game play                                      # 内置游戏和已安装的远程游戏
-uv run agentcade-game play --game templates/remote-game/riddle  # 再接入正在开发的游戏，和已有的同名时代替它
+uv run agentcade-game play                          # 内置游戏和已安装的远程游戏
+uv run agentcade-game play --game templates/riddle  # 再接入正在开发的游戏，和已有的同名时代替它
 ```
 
 输入 `/wait` 等游戏把还没说完的话说完（比如画完一题），`/quit` 退出。加上 `--trace` 还会打印主 Agent 调用了哪个工具，以及内置游戏和本地目录里游戏的提示词和工具调用。和机器人一样，上一句的第一条回复出来后才读下一句，所以游戏还在处理时输入的话会得到“还在准备呢”。要说的话也可以一行一行写在文件里，用 `play < 场景.txt` 自动跑完。主 Agent 的大模型配置从 `src/agentcade/.env` 读，也可以用 `LLM_API_KEY` 等环境变量。
@@ -336,7 +327,7 @@ uv run watcherobot app run .
 远程游戏先在本机起服务，再运行应用，在设置页面 `http://127.0.0.1:8790/settings` 的“游戏”栏粘贴 `http://127.0.0.1:7860`：
 
 ```bash
-uv run agentcade-game serve templates/remote-game/riddle --port 7860
+uv run agentcade-game serve templates/riddle --port 7860
 ```
 
 打开 `http://127.0.0.1:8790` 可以看到每一轮的识别结果、A2A 消息和设备输出，内置游戏还能看到游戏 Agent 调用了哪些工具。对着机器人至少试一遍下面这些：
@@ -398,7 +389,7 @@ agentcade-game check https://你的游戏地址
 | 同时给很多人玩 | 每一局一个实例，状态放在实例属性里；模块级的共享数据要能被多局同时访问。超过 30 分钟没有输入的局会自动关闭，同时进行的局数默认最多 32 局，用 `--max-sessions` 修改 |
 | 不让用户等太久 | 超过 210 秒没有任何回复，小懒会当成连接超时 |
 | `PUBLIC_URL` 设成用户填写的地址 | 小懒总是把消息发到用户填写的地址，所以 `PUBLIC_URL` 配错了也能玩，只是 `check` 会提醒。设对了，名片里的地址才是对的，别的 A2A 客户端也能直接用 |
-| 流式响应不能被缓冲 | 前面有 Caddy 或 Nginx 时，关掉响应缓冲，请求超时设到 5 分钟以上，见[模板的部署说明](../templates/remote-game/README.md#部署到自己的服务器) |
+| 流式响应不能被缓冲 | 前面有 Caddy 或 Nginx 时，关掉响应缓冲，请求超时设到 5 分钟以上，见[模板的部署说明](../templates/riddle/README.md#部署到自己的服务器) |
 | 尽量用 https | 公网地址用 http 时传输不加密，用户安装时会看到提醒 |
 | 保护隐私 | 用户玩游戏时说的话会发到你的服务器上，不要挪作他用；保存的话要在提交游戏目录时说明保存多久、用来做什么 |
 | 改版本要升级 `version` | 游戏目录按版本和能力核对，改了之后用户那里会显示“当前版本未经审核”，要再提一次 PR 更新条目 |

@@ -7,7 +7,7 @@
       "summary": "我出一个谜语，你来猜谜底",
       "url": "https://riddle.leftover.cn",
       "author": "left0ver",
-      "homepage": "https://github.com/left0ver/agentcade/tree/main/templates/remote-game",
+      "homepage": "https://github.com/left0ver/agentcade/tree/main/templates/riddle",
       "version": "1.0.1",
       "capabilities": [
         "motion",

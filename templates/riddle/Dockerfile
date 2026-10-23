@@ -11,11 +11,12 @@ COPY requirements.txt .
 # requirements.txt 里 GitHub 的地址前面加上镜像站，例如 https://gh-proxy.com/https://github.com/...
 RUN sed "s#https://github.com/#${GITHUB_PROXY}https://github.com/#g" requirements.txt > /tmp/requirements.txt \
     && pip install --no-cache-dir --disable-pip-version-check --index-url "$PIP_INDEX_URL" -r /tmp/requirements.txt
-COPY riddle ./riddle
+# 游戏目录统一放在 game 下，改游戏名时不用改这里；游戏里的模块用相对导入，目录叫什么都能运行。
+COPY . ./game
 
 # Hugging Face Space 用 UID 1000 运行容器。
 RUN useradd --create-home --uid 1000 user
 USER user
 EXPOSE 7860
 # 密钥从环境变量读取；PUBLIC_URL 不填时，在 Space 上自动用 https://$SPACE_HOST。
-CMD ["agentcade-game", "serve", "riddle", "--host", "0.0.0.0", "--port", "7860"]
+CMD ["agentcade-game", "serve", "game", "--host", "0.0.0.0", "--port", "7860"]

@@ -6,7 +6,7 @@
 
 ## 提交游戏
 
-1. 按[游戏开发指南](../docs/game-development.md)，用 [`templates/remote-game`](../templates/remote-game) 写好游戏，部署到一个公网地址，比如自己的服务器；有域名的话建议配上 https。`SKILL.md` 里要写 `author`。
+1. 按[游戏开发指南](../docs/game-development.md)，参考 [`templates/riddle`](../templates/riddle) 写好游戏，部署到一个公网地址，比如自己的服务器；有域名的话建议配上 https。`SKILL.md` 里要写 `author`。
 2. 运行合规检查：
 
    ```bash
