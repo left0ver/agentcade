@@ -297,7 +297,7 @@ uv run agentcade-game check src/games/my_game
 
 | 检查 | 级别 |
 | --- | --- |
-| 能读到名片，支持流式响应，声明了 `desktop-game/7` | 不通过 |
+| 能读到名片，支持流式响应，声明了小懒支持的协议版本，比如 `agentcade/1` | 不通过 |
 | `SKILL.md` 的声明合规，比如 ID 的格式、`summary` 的长度 | 不通过 |
 | 开局、说一句话、结束都有回复，最后一条有要说的话 | 不通过 |
 | 结束后这一局的状态是 ended；发给不存在的一局时回复已经结束 | 不通过 |
@@ -307,6 +307,8 @@ uv run agentcade-game check src/games/my_game
 | 名片里的消息地址和填写的地址对不上 | 提醒 |
 | 超过 8 秒才说第一句话 | 提醒 |
 | 地址用的是 http、没写 `author`、声明了不认识的能力 | 提醒 |
+| 回复里有协议没有定义的字段，多半是名字写错了 | 提醒 |
+| 用的协议版本即将停止支持 | 提醒 |
 
 `--say "我猜是水"` 可以换开局后说的那句话，`--timeout` 改每个请求最长等待的秒数。
 
@@ -407,7 +409,7 @@ agentcade-game check https://你的游戏地址
 
 ## 不用 Python 写
 
-远程游戏只要实现一个遵循 `desktop-game/7` 的 A2A 服务，用什么语言都可以。名片放在 `/.well-known/agent-card.json`，要声明 `capabilities.streaming=true`，有一个 JSONRPC 消息地址，并且有且只有一个标签里带 `desktop-game/7` 的 skill。小懒只把消息发到用户填写的地址：主机用填写的地址，路径用名片里消息地址的路径。`SKILL.md` 里的字段在名片里这样对应：
+远程游戏只要实现一个遵循 `agentcade/1` 的 A2A 服务，用什么语言都可以。名片放在 `/.well-known/agent-card.json`，要声明 `capabilities.streaming=true`，有一个 JSONRPC 消息地址，并且有且只有一个标签里带 `agentcade/1` 的 skill。小懒只把消息发到用户填写的地址：主机用填写的地址，路径用名片里消息地址的路径。`SKILL.md` 里的字段在名片里这样对应：
 
 | `SKILL.md` | 名片 |
 | --- | --- |
@@ -420,3 +422,14 @@ agentcade-game check https://你的游戏地址
 | `author`、`homepage` | `provider.organization`、`provider.url` |
 
 消息格式见 [README 的“架构”一节](../README.md#架构)。设备指令是一次 SDK 调用，写成 `{"call": "lights.set_color", "args": ["#00FF00"], "kwargs": {"brightness": 0.8}}`，开放的方法和要声明的能力见上面的“设备指令”。写好后同样用 `agentcade-game check <地址>` 检查。
+
+## 协议版本
+
+主 Agent 和游戏之间的消息格式叫 `agentcade/1`，写成“名称/版本”。用 Python 写的游戏不用管它，`agentcade` 会处理；不用 Python 写时，名片的 skill 标签和每条消息的 `protocol` 字段都要写这个版本。
+
+| 规则 | 说明 |
+| --- | --- |
+| 只有不兼容的改动才升版本 | 删除或改名字段、改字段的含义、给 `kind` 这类字段加新的取值，都要升版本 |
+| 加可选字段不升版本 | 收到消息时，双方都忽略协议没有定义的字段，所以旧的游戏和旧的小懒都不受影响。新字段的效果不能指望一定生效，对方可能还不认识它 |
+| 名片里写支持的全部版本 | 游戏可以在 skill 的标签里写几个版本，小懒用双方都支持的最新版本，发出的消息写这个版本，回复也要写同一个版本 |
+| 旧版本至少再支持三个月 | 出了新版本以后，小懒在三个月里同时支持新旧两个版本，`check` 会提醒停止支持的日期，到期之前把游戏升级到新版本 |

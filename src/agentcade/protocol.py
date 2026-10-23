@@ -1,15 +1,27 @@
-from typing import Literal, TypeVar
+from typing import Literal, TypeVar, get_args
 
 from a2a.helpers import new_data_part
 from a2a.types import Part
 from google.protobuf.json_format import MessageToDict
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, field_validator, model_validator
 
-PROTOCOL_VERSION = "desktop-game/7"
+# 主 Agent 和游戏之间的通信协议，写成“名称/版本”。只有不兼容的改动才升版本，见游戏开发指南的“协议版本”一节。
+# Version 是主 Agent 支持的全部版本，新的在前；游戏的名片里写它支持的版本，主 Agent 用双方都支持的最新版本。
+Version = Literal["agentcade/1"]
+SUPPORTED_PROTOCOLS: tuple[str, ...] = get_args(Version)
+PROTOCOL_VERSION = SUPPORTED_PROTOCOLS[0]
+# 出了新版本以后，旧版本至少再支持三个月：版本 → 停止支持的日期，check 会提醒还在用它的游戏。
+RETIRING: dict[str, str] = {}
 
 
 class Model(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+
+class Wire(BaseModel):
+    """主 Agent 和游戏之间传的消息。不认识的字段放进 model_extra 后忽略，所以加可选字段不用升协议版本。"""
+
+    model_config = ConfigDict(extra="allow", str_strip_whitespace=True)
 
 
 class GameDescriptor(Model):
@@ -41,7 +53,7 @@ def integral(value):
     return value
 
 
-class SdkCall(Model):
+class SdkCall(Wire):
     """一次机器人 SDK 调用，例如 lights.set_color("#00FF00", brightness=0.8)。
 
     call 是 SDK 里的“模块.方法”，参数和 SDK 一样；主 Agent 检查游戏能不能调用、有没有声明能力后，
@@ -66,11 +78,11 @@ class Presentation(Model):
     reset: bool = False
 
 
-class GameInput(Model):
+class GameInput(Wire):
     """主 Agent 发给游戏 Agent 的一条用户输入。"""
 
-    model_config = ConfigDict(extra="forbid", str_strip_whitespace=False)
-    protocol: Literal["desktop-game/7"] = PROTOCOL_VERSION
+    model_config = ConfigDict(extra="allow", str_strip_whitespace=False)
+    protocol: Version = PROTOCOL_VERSION
     kind: Literal["start", "message", "end"]
     text: str = Field(default="", description="用户原话，保持字词和标点")
     reason: Literal["user", "shutdown"] | None = Field(
@@ -87,14 +99,14 @@ class GameInput(Model):
         return self
 
 
-class GameReply(Model):
+class GameReply(Wire):
     """游戏 Agent 回给主 Agent 的一条回复：要播报的话和设备指令，一次请求至少回复一条。
 
     设备指令是机器人 SDK 调用。中间回复可以只有设备指令；最后一条回复必须有要播报的话。
     主 Agent 先执行设备指令，再播报。
     """
 
-    protocol: Literal["desktop-game/7"] = PROTOCOL_VERSION
+    protocol: Version = PROTOCOL_VERSION
     text: str = Field(default="", max_length=500, description="主 Agent 原样播报的面向用户回复")
     directives: list[SdkCall] = Field(
         default_factory=list, max_length=16, description="按顺序执行的机器人 SDK 调用",

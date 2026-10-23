@@ -6,7 +6,7 @@
   <a href="https://huggingface.co/spaces/left0ver/WatcherRobot-com.left0ver.agentcade"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Space-FFD21E" alt="Hugging Face Space"></a>
   <img src="https://img.shields.io/badge/python-%E2%89%A53.11-3776AB?logo=python&logoColor=white" alt="Python 3.11+">
   <img src="https://img.shields.io/badge/WatcheRobot%20SDK-%E2%89%A50.1.10-6E56CF" alt="WatcheRobot SDK 0.1.10+">
-  <img src="https://img.shields.io/badge/A2A-desktop--game%2F7-0C8585" alt="A2A desktop-game/7">
+  <img src="https://img.shields.io/badge/A2A-agentcade%2F1-0C8585" alt="A2A agentcade/1">
   <img src="https://img.shields.io/badge/platform-macOS-lightgrey?logo=apple" alt="macOS">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="MIT License"></a>
 </p>
@@ -123,7 +123,7 @@ flowchart LR
 
 - **主 Agent**（`src/agentcade/main_agent.py`）根据用户原话，要么直接聊天回答，要么调用 `list_games`、`start_game`、`end_game`、`send_message` 这四个工具。游戏列表在启动时从 `src/games/` 自动发现。
 - **游戏 Agent**（`src/agentcade/skill_agent.py`）是由 `SKILL.md` 驱动的 ReAct Agent。规则、状态和判定都在游戏内部，主 Agent 只知道当前在玩哪个游戏。游戏不直接连机器人：`self.robot` 的写法和机器人 SDK 一样，每次调用作为设备指令附在回复里，由主 Agent 检查后在机器人上执行，本地游戏和远程游戏用的是同一种方式。
-- **通信格式 `desktop-game/7`**（`src/agentcade/protocol.py`）：主 Agent 发一条用户输入，游戏回复一条或多条要播报的话和设备指令。消息放在 A2A DataPart 里；Agent Card 要声明 `streaming=true`，skill 的标签包含 `desktop-game/7`，需要的机器人能力写成 `capability:<能力>` 标签，skill 的 `description` 是开机问候里念的简短介绍。
+- **通信格式 `agentcade/1`**（`src/agentcade/protocol.py`）：主 Agent 发一条用户输入，游戏回复一条或多条要播报的话和设备指令。消息放在 A2A DataPart 里，每条都带 `"protocol": "agentcade/1"`；Agent Card 要声明 `streaming=true`，skill 的标签包含 `agentcade/1`，需要的机器人能力写成 `capability:<能力>` 标签，skill 的 `description` 是开机问候里念的简短介绍。版本怎么升、旧版本支持多久见[游戏开发指南的“协议版本”](docs/game-development.md#协议版本)。
 
   | 方向 | 内容 | A2A 载体 |
   | --- | --- | --- |

@@ -43,12 +43,13 @@ from agentcade.game_client import (
     explain,
     message_url,
     pinned,
+    protocol_of,
     protocol_skill,
     remote_descriptor,
 )
 from agentcade.game_server import MAX_SESSIONS, serve_game
 from agentcade.main_agent import MainAgent, greeting
-from agentcade.protocol import GameInput
+from agentcade.protocol import RETIRING, SUPPORTED_PROTOCOLS, GameInput, GameReply
 from agentcade.robot_calls import SDK_CALLS, describe_call
 from agentcade.robot_calls import problem as call_problem
 from agentcade.skill_agent import SkillAgent
@@ -101,13 +102,14 @@ async def open_target(stack: AsyncExitStack, target: str) -> str:
 async def connect(stack: AsyncExitStack, url: str, timeout: float):
     http = await stack.enter_async_context(httpx.AsyncClient(timeout=timeout, trust_env=False))
     card = await A2ACardResolver(http, url).get_agent_card()
-    descriptor = remote_descriptor(card, protocol_skill(card))
+    skill = protocol_skill(card)
+    descriptor = remote_descriptor(card, skill)
     # 和小懒一样，消息只发到填写的地址。
     client = await create_client(pinned(card, url), client_config=ClientConfig(
         streaming=True, httpx_client=http, supported_protocol_bindings=["JSONRPC"],
     ))
     stack.push_async_callback(client.close)
-    return GameConnection(descriptor, client, descriptor.required_capabilities), card
+    return GameConnection(descriptor, client, descriptor.required_capabilities, protocol_of(skill)), card
 
 
 def describe(call) -> str:
@@ -202,6 +204,14 @@ def check_tools(factory, report: Report) -> None:
                    else "游戏没有声明工具")
 
 
+def extra_fields(reply: GameReply) -> list[str]:
+    """回复里协议没有定义的字段，小懒会忽略，多半是写错了名字。"""
+    names = list(reply.model_extra or {})
+    for index, call in enumerate(reply.directives):
+        names += [f"directives[{index}].{name}" for name in call.model_extra or {}]
+    return names
+
+
 async def exchange(connection, context_id, request, report, label, timeout):
     """发一条请求，记录每条回复的时间，检查回复的内容和设备指令。"""
     started = time.monotonic()
@@ -225,6 +235,9 @@ async def exchange(connection, context_id, request, report, label, timeout):
         print(f"      {'[' + actions + '] ' if actions else ''}{reply.text}", flush=True)
     if spoken is not None and spoken > FIRST_REPLY_SECONDS:
         report.add("warn", f"{label}：{spoken:.1f} 秒后才说第一句话，处理慢时建议先说一句“稍等”")
+    extras = list(dict.fromkeys(name for _, reply in replies for name in extra_fields(reply)))
+    if extras:
+        report.add("warn", f"{label}：回复里有协议没有定义的字段 {'、'.join(extras)}，小懒会忽略，检查是不是写错了名字")
     declared = set(connection.descriptor.required_capabilities)
     problems = []
     for _, reply in replies:
@@ -261,7 +274,10 @@ async def check(args) -> int:
             report.add("fail", f"名片有问题：{explain(error)}")
             return 1
         descriptor = connection.descriptor
-        report.add("ok", f"能读到 {url}/.well-known/agent-card.json，支持流式响应")
+        report.add("ok", f"能读到 {url}/.well-known/agent-card.json，支持流式响应，协议 {connection.protocol}")
+        if connection.protocol in RETIRING:
+            report.add("warn", f"协议 {connection.protocol} 会在 {RETIRING[connection.protocol]} 停止支持，"
+                               f"请升级到 {SUPPORTED_PROTOCOLS[0]}")
         report.add("ok", f"游戏 {descriptor.id}“{descriptor.name}”，简短介绍 {len(descriptor.summary)} 字："
                          f"{descriptor.summary}")
         declared, target = declared_url(card), message_url(card, url)

@@ -1,6 +1,7 @@
 import asyncio
 import importlib
 import logging
+import re
 import time
 from collections.abc import Awaitable, Callable
 from contextlib import AsyncExitStack
@@ -21,7 +22,7 @@ from agentcade.catalog import CatalogStore
 from agentcade.config import SOURCE
 from agentcade.game_server import serve_game
 from agentcade.protocol import (
-    PROTOCOL_VERSION,
+    SUPPORTED_PROTOCOLS,
     GameDescriptor,
     GameInput,
     GameReply,
@@ -32,6 +33,9 @@ from agentcade.protocol import (
 
 logger = logging.getLogger(__name__)
 
+# 名片标签里像协议版本的写法，用来认出小懒不支持的版本。
+PROTOCOL_TAG = re.compile(r"^[a-z][a-z0-9-]*/\d+$")
+
 
 class LocalGame(Model):
     kind: Literal["local"] = "local"
@@ -40,10 +44,12 @@ class LocalGame(Model):
 
 
 class GameConnection:
-    def __init__(self, descriptor, client, granted):
+    def __init__(self, descriptor, client, granted, protocol):
         self.descriptor, self.client = descriptor, client
         # 用户同意这个游戏使用的机器人能力；内置游戏是它声明的全部能力。
         self.granted = set(granted)
+        # 和这个游戏通信用的协议版本，消息里都写这个版本。
+        self.protocol = protocol
 
     async def send(
         self, context_id: str, request: GameInput, *,
@@ -51,6 +57,7 @@ class GameConnection:
         request_id: str | None = None,
     ) -> GameReply:
         """发送一条输入。中间回复逐条交给 on_reply，返回这次请求的最后一条回复。"""
+        request = request.model_copy(update={"protocol": self.protocol})
         message = Message(
             message_id=request_id or uuid4().hex, context_id=context_id, role=Role.ROLE_USER,
             parts=[to_part(request)],
@@ -76,6 +83,8 @@ class GameConnection:
                 if event.HasField("task") or not update.status.HasField("message"):
                     continue
                 reply = from_parts(GameReply, update.status.message.parts)
+                if reply.protocol != self.protocol:
+                    raise ValueError(f"游戏回复用的协议是 {reply.protocol}，这个游戏说好的是 {self.protocol}")
                 if state == TaskState.TASK_STATE_COMPLETED:
                     if not reply.text:
                         raise ValueError("最后一条回复必须有要播报的话")
@@ -126,15 +135,24 @@ def explain(error: BaseException) -> str:
     return (str(error) or type(error).__name__)[:200]
 
 
+def protocol_of(skill) -> str | None:
+    """游戏和小懒都支持的最新协议版本，没有时返回 None。"""
+    return next((version for version in SUPPORTED_PROTOCOLS if version in skill.tags), None)
+
+
 def protocol_skill(card, game_id: str | None = None):
     """名片里按公共协议提供的那个游戏。"""
     if not card.capabilities.streaming:
         raise ValueError("游戏服务必须支持流式响应")
-    skills = [skill for skill in card.skills if PROTOCOL_VERSION in skill.tags]
+    skills = [skill for skill in card.skills if protocol_of(skill)]
     if game_id is not None:
         skills = [skill for skill in skills if skill.id == game_id]
     if len(skills) != 1:
-        raise ValueError(f"名片里要有且只有一个带 {PROTOCOL_VERSION} 标签的游戏")
+        supported = "、".join(SUPPORTED_PROTOCOLS)
+        others = sorted({tag for skill in card.skills for tag in skill.tags if PROTOCOL_TAG.match(tag)})
+        if not skills and others:
+            raise ValueError(f"游戏用的协议是 {'、'.join(others)}，小懒支持的是 {supported}，游戏要升级")
+        raise ValueError(f"名片里要有且只有一个带 {supported} 标签的游戏")
     return skills[0]
 
 
@@ -265,9 +283,9 @@ class GameHub:
                 limits=httpx.Limits(max_keepalive_connections=0),
             ))
             card = await A2ACardResolver(http, url).get_agent_card()
-            protocol_skill(card, game_id)
+            skill = protocol_skill(card, game_id)
             client = await self.client(stack, card, http)
-            return GameConnection(descriptor, client, descriptor.required_capabilities)
+            return GameConnection(descriptor, client, descriptor.required_capabilities, protocol_of(skill))
 
         await self.open(game_id, opener)
 
@@ -277,9 +295,10 @@ class GameHub:
                 timeout=entry.timeout_seconds, trust_env=False,
             ))
             card = await A2ACardResolver(http, entry.url).get_agent_card()
-            descriptor = remote_descriptor(card, protocol_skill(card, entry.id))
+            skill = protocol_skill(card, entry.id)
+            descriptor = remote_descriptor(card, skill)
             client = await self.client(stack, pinned(card, entry.url), http)
-            return GameConnection(descriptor, client, entry.granted)
+            return GameConnection(descriptor, client, entry.granted, protocol_of(skill))
 
         await self.open(entry.id, opener)
 
