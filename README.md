@@ -11,103 +11,90 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="MIT License"></a>
 </p>
 
-桌面机器人“小懒”：用语音和它聊天、玩小游戏。主 Agent 负责聊天和选择游戏，每个游戏是一个独立的 Agent，通过 A2A 通信。现在有“你画我猜”和“海龟汤”，往 `src/games/` 里放一个目录就能加一个新游戏。
+<p align="center">让桌面机器人“小懒”陪你聊天、玩游戏，全程用嘴说就行。</p>
+
+小懒就是主 Agent，负责聊天和选游戏；每个游戏是一个独立的游戏 Agent，小懒通过 A2A 和它们通信。游戏可以内置在应用里，也可以由任何人部署在自己的服务器上，用户粘贴地址就能安装。
+
+## 设计理念
+
+- **主 Agent 和游戏 Agent 只靠消息通信**：小懒把用户的话转给游戏，消息分开局、局内输入、结束三种；游戏回一条或多条消息，每条是要说的话和要机器人执行的设备指令。双方用 A2A 流式通信，协议是 `agentcade/1`。游戏的规则和状态都留在游戏里，小懒不用理解，所以内置游戏和远程游戏走同一套协议，用任何语言实现这个协议都能接入。
+- **游戏 Agent 由 SKILL.md 和工具驱动**：每个游戏是一个 ReAct Agent。`SKILL.md` 用自然语言写规则和主持流程，`agent.py` 提供出题、判定、计分这些工具。每收到一条消息，大模型对照游戏说明和当前状态，自己决定调用哪些工具、说什么；题目、对错和得分只来自工具的结果。
+- **游戏开放，权限收紧**：游戏可以用任何语言实现、部署在任意服务器上，但不直接访问设备。游戏对机器人的操作以设备指令的形式随回复交给主 Agent，主 Agent 逐条校验：方法在白名单内、参数符合 SDK 签名、所需能力已经授权（远程游戏安装时由用户逐项授权，新增能力要重新授权），校验通过才执行。麦克风、摄像头等涉及隐私的接口不对游戏开放。
 
 ## 怎么玩
 
-说“有哪些游戏”查看游戏，说“玩海龟汤”开始，说“结束游戏”退出。游戏中可以随时聊天，同一时间只能玩一个游戏，想换游戏要先结束当前这一局。机器人说话时不收音，说完再开口。
+| 对小懒说 | 会发生什么 |
+| --- | --- |
+| “有哪些游戏” | 介绍可以玩的游戏 |
+| “玩海龟汤” | 开始一局，游戏中也可以随时聊天 |
+| “结束游戏” | 结束这一局；想换游戏要先结束当前这一局 |
 
-- **你画我猜**：机器人在屏幕上画一种动物，你来猜。每局 5 题，每题 2 次机会。说“提示”要线索，不占机会；说“跳过”公布答案并直接画下一题；一题答完后说“下一题”继续。画一题要等几十秒，这段时间可以聊天。
-- **海龟汤**：机器人讲一个离奇的小故事，你只能问“是不是”的问题，机器人点头、摇头或者说无关，帮你一步步推理出真相。想明白了就把推理说出来；说“提示”要线索，说“公布答案”放弃这一道，说“再来一道”换题。玩过的题不会重复出，题库里的都玩过了，机器人会现场出一道新题，要等一两分钟。
+小懒说话时不听，等它说完再开口。现在有两个内置游戏：
 
-## 安装后第一次使用
+| 游戏 | 玩法 |
+| --- | --- |
+| 你画我猜 | 小懒在屏幕上画一种动物，你来猜。每局 5 题，每题 2 次机会，可以说“提示”“跳过”“下一题”。画一题要几十秒，这时可以先聊天 |
+| 海龟汤 | 小懒讲一个离奇的小故事，你只能问“是不是”的问题，它点头、摇头或者说无关，直到你推理出真相。可以说“提示”“公布答案”“再来一道”。玩过的题不会重复，题库玩完了会现场出新题，要等一两分钟 |
 
-从应用广场安装并启动后，浏览器会自动打开设置页面 `http://127.0.0.1:8790/settings`。填好下面三样密钥并保存，应用就会自动继续启动：
+更多游戏可以在设置页面的“游戏”栏，从游戏目录里安装，或者粘贴别人部署的游戏地址。
 
-| 密钥 | 用途 | 填在哪一栏 |
+## 开始使用
+
+从应用广场安装并启动后，浏览器会打开设置页面 `http://127.0.0.1:8790/settings`。填好下面三个 API Key 并保存，应用就会继续启动：
+
+| API Key | 用来做什么 | 填在哪一栏 |
 | --- | --- | --- |
-| 阿里云百炼（DashScope）的 API Key | 语音识别和语音合成 | 主 Agent |
-| 大模型的 API Key（OpenAI 兼容接口，默认 DeepSeek） | 聊天、选择游戏、主持游戏 | 主 Agent 和每个游戏 |
-| Typesafe 的 API Key | 判断你画我猜答得对不对、按海龟汤的汤底回答提问 | 你画我猜和海龟汤 |
+| 阿里云百炼（DashScope） | 语音识别和语音合成 | 主 Agent |
+| 大模型（OpenAI 兼容接口，默认 DeepSeek） | 聊天、选游戏、主持游戏 | 主 Agent 和每个游戏 |
+| Typesafe | 判断你画我猜的答案、回答海龟汤的提问 | 你画我猜和海龟汤 |
 
-密钥只保存在本机，这些服务按各自的账号计费。不玩的游戏可以在设置页面的“游戏”栏停用，停用后不用填它的密钥。打开 `http://127.0.0.1:8790` 可以看到对话内容和每轮用了哪些工具。
+密钥只保存在本机，费用由各个服务按你的账号收取。不玩的游戏可以在“游戏”栏停用，停用后就不用填它的密钥。打开 `http://127.0.0.1:8790` 能实时看到每一轮的对话、工具调用和机器人的动作。
 
 > [!NOTE]
-> 机器人固件每开关一次麦克风都会少一点内存，连续玩一个多小时后，机器人会听不到声音或者屏幕不再变化，断电重启就能恢复。目前只在 macOS 上验证过。
+> 连续玩一个多小时后，机器人可能听不到声音或者屏幕不再变化（固件每开关一次麦克风会少一点内存），断电重启就好。目前只在 macOS 上验证过。
 
 ## 本地开发
 
 需要 Python 3.11+、[uv](https://docs.astral.sh/uv/)，以及一台和电脑在同一局域网的机器人。
 
 ```bash
-cp src/agentcade/.env.example src/agentcade/.env
+uv sync
+cp src/agentcade/.env.example src/agentcade/.env                 # 主 Agent 的密钥
 cp src/games/guess_animal/.env.example src/games/guess_animal/.env
 cp src/games/turtle_soup/.env.example src/games/turtle_soup/.env
-# 分别填写这几个文件
-uv sync
-uv run watcherobot robot setup    # 仅首次连接机器人
-uv run watcherobot app run .      # Ctrl+C 或 uv run watcherobot app stop 停止
+uv run watcherobot robot setup     # 第一次连接机器人时运行
+uv run watcherobot app run .       # 启动，Ctrl+C 停止
 ```
 
-检查和真机测试：
+常用命令：
 
 ```bash
-uv run ruff check app.py src scripts
-uv run watcherobot app check .
-uv run python scripts/e2e_robot.py   # 用电脑扬声器替用户说话，约 5 分钟
+uv run ruff check app.py src scripts templates   # 代码检查
+uv run watcherobot app check .                   # 检查 app.json、依赖和源码能不能发布
+uv run python scripts/e2e_robot.py               # 真机端到端测试，约 5 分钟
+uv run python -m games.turtle_soup.generator --count 3 --save   # 提前生成海龟汤的题
 ```
 
-运行端到端测试前，把机器人放在电脑扬声器旁边，并保持环境安静。测试会调用真实的语音和模型服务，结果保存在 `.artifacts/e2e/` 下。
+端到端测试用电脑扬声器替你说话，测试前把机器人放在扬声器旁边，保持安静；结果保存在 `.artifacts/e2e/`。
 
-海龟汤的题可以提前批量生成：`uv run python -m games.turtle_soup.generator --count 3 --save`。生成的题和玩过的记录保存在 `~/Library/Application Support/watcherobot/applications/<应用 ID>/data/turtle_soup/`。
+**配置**：主 Agent 和每个游戏的配置项写在各自目录的 `settings.yaml` 里，本地开发时从同目录的 `.env` 读取。改了 `settings.yaml` 后运行 `uv run python scripts/write_env_examples.py` 重新生成 `.env.example`。
 
-## 配置
+## 开发游戏
 
-主 Agent 和每个游戏各有一份配置，互不共用。每个 Agent 读取哪些配置项，声明在它自己目录的 `settings.yaml` 里，设置页面的表单、默认值和必填检查都按这份文件来：
+一个游戏只要两个文件：`SKILL.md` 写游戏声明和主持流程，`agent.py` 提供工具。
 
-```yaml
-options:
-  - key: JEV_MODEL          # 环境变量名
-    label: 判题模型          # 设置页面上的说明
-    default: "jev-latest"   # 不写表示必填
-    secret: false           # true 表示密钥，页面上不回显
-    advanced: true          # true 表示收在“更多设置”里
-```
+- **内置游戏**：放在 `src/games/<游戏 ID>/`，重启应用就会自动接入。
+- **远程游戏**：部署在你自己的服务器上，用户粘贴地址就能安装，不用重启。从模板 [`templates/riddle/`](templates/riddle) 开始。
 
-配置的值从两个地方之一读取：
-
-- **本地开发**：从 Agent 目录里的 `.env` 读取。
-- **安装后的应用**：从 `~/Library/Application Support/watcherobot/applications/<应用 ID>/config/` 读取，这里的文件由设置页面写入，升级或重装应用都不会丢。
-
-改了 `settings.yaml` 之后，运行 `uv run python scripts/write_env_examples.py`，重新生成各目录的 `.env.example`。大模型的接口要兼容 OpenAI，并且支持 JSON 输出和 function calling。改完配置要重启应用才生效。
-
-## 添加游戏
-
-游戏有两种，写法一样：一个 `SKILL.md` 写游戏声明和主持流程，一个 `agent.py` 提供工具和状态。
-
-- **内置游戏**：在 `src/games/<game_id>/` 下新建一个目录，重启应用就会自动接入，不用改主 Agent。
-- **远程游戏**：单独部署在自己的服务器上。别人在设置页面的“游戏”栏从游戏目录里挑，或者粘贴它的地址，确认权限后马上就能玩，不用改代码，也不用重启。完整的示例和部署说明见模板 [`templates/riddle/`](templates/riddle)。
-
-**怎么写、怎么测试、要满足哪些要求，见[游戏开发指南](docs/game-development.md)。** 不用机器人也能调试：
+不连机器人也能调试：
 
 ```bash
-uv run agentcade-game chat src/games/turtle_soup    # 文字模拟器：打字和游戏对话，设备指令显示成文字
-uv run agentcade-game check src/games/turtle_soup   # 合规检查：名片和完整的一局
-uv run agentcade-game play                          # 整条链路的文字模式：经过主 Agent 和所有游戏
+uv run agentcade-game chat src/games/turtle_soup    # 打字和游戏对话
+uv run agentcade-game check src/games/turtle_soup   # 合规检查：真实玩一局
+uv run agentcade-game play                          # 经过主 Agent，打字玩所有游戏
 ```
 
-已安装的远程游戏和停用的内置游戏记在用户目录的 `data/games.json` 里，升级应用不会丢；某个游戏连不上时只跳过它，其他游戏照常可玩。
-
-**游戏目录**：[`catalog/games.json`](catalog/games.json) 是审核过的远程游戏列表，设置页面在“发现更多游戏”里列出它们。小懒按地址认游戏：在目录里的标“已审核”；版本或者要的能力和审核时不一样，标“当前版本未经审核”；不在目录里的标“未审核”；已下架的标红并建议卸载，也不能再安装。目录在设置页面打开时读取，读不到时用上次缓存的内容，官方地址连不上会换 jsDelivr 镜像。开发者提交游戏、审核和下架的流程见 [`catalog/README.md`](catalog/README.md)。
-
-## 发布
-
-```bash
-uv run publish            # 发布源码到 Hugging Face（没登录时先登录），发布前会确认
-uv run publish --submit   # 发布后提交到官方名单审核
-```
-
-加上 `--provider gitee` 改为发布到 Gitee。源码会发布到你名下的公开仓库 `WatcherRobot-<应用 ID>`，官方审核合并后，应用才会出现在应用广场。`.env` 和 `.watcherignore` 里列出的文件不会发布。每次更新前先改 `app.json` 里的 `version`。
+怎么写、怎么测试、要满足哪些要求，见 **[游戏开发指南](docs/game-development.md)**。想让别人在“发现更多游戏”里看到你的远程游戏，按 [`catalog/README.md`](catalog/README.md) 提交到游戏目录。
 
 ## 架构
 
@@ -121,19 +108,24 @@ flowchart LR
     Output --> Screen[屏幕与动作]
 ```
 
-- **主 Agent**（`src/agentcade/main_agent.py`）根据用户原话，要么直接聊天回答，要么调用 `list_games`、`start_game`、`end_game`、`send_message` 这四个工具。游戏列表在启动时从 `src/games/` 自动发现。
-- **游戏 Agent**（`src/agentcade/skill_agent.py`）是由 `SKILL.md` 驱动的 ReAct Agent。规则、状态和判定都在游戏内部，主 Agent 只知道当前在玩哪个游戏。游戏不直接连机器人：`self.robot` 的写法和机器人 SDK 一样，每次调用作为设备指令附在回复里，由主 Agent 检查后在机器人上执行，本地游戏和远程游戏用的是同一种方式。
-- **通信格式 `agentcade/1`**（`src/agentcade/protocol.py`）：主 Agent 发一条用户输入，游戏回复一条或多条要播报的话和设备指令。消息放在 A2A DataPart 里，每条都带 `"protocol": "agentcade/1"`；Agent Card 要声明 `streaming=true`，skill 的标签包含 `agentcade/1`，需要的机器人能力写成 `capability:<能力>` 标签，skill 的 `description` 是开机问候里念的简短介绍。版本怎么升、旧版本支持多久见[游戏开发指南的“协议版本”](docs/game-development.md#协议版本)。
+| 部分 | 代码 | 做什么 |
+| --- | --- | --- |
+| 主 Agent | `src/agentcade/main_agent.py` | 直接聊天，或者用 `list_games`、`start_game`、`end_game`、`send_message` 四个工具管理游戏 |
+| 游戏 Agent | `src/agentcade/skill_agent.py` | 按 `SKILL.md` 主持游戏的 ReAct Agent，规则、状态和判定都在游戏里 |
+| 通信协议 `agentcade/1` | `src/agentcade/protocol.py` | 基于 A2A：主 Agent 发一条用户输入，游戏回复一条或多条要说的话和设备指令，格式见[开发指南](docs/game-development.md#不用-python-写) |
+| 设备指令 | `src/agentcade/robot_calls.py` | 游戏不直接连机器人，`self.robot` 的调用随回复发给主 Agent，检查权限后在机器人上执行，一局结束后复位 |
+| 对话页面 | `src/observability/` | `http://127.0.0.1:8790` 实时显示识别结果、工具调用、A2A 消息和设备输出 |
 
-  | 方向 | 内容 | A2A 载体 |
-  | --- | --- | --- |
-  | 主 → 游戏 | `{"kind": "start\|message\|end", "text": 用户原话, "reason": "user\|shutdown"}`，`reason` 只在 `end` 时有 | 流式 `SendMessage`，`context_id` 标识一局游戏 |
-  | 游戏 → 主 | `{"text": 要播报的话, "directives": [设备指令], "session": "active\|ended"}` | 中间回复的状态是 `working`，可以只有设备指令；最后一条是 `completed`，必须有要播报的话 |
+运行中麦克风、语音服务或者大模型出现单次故障时，会自动重试或跳过这一步，不会退出；只有启动时的问题（配置缺失、机器人没连上、端口被占用）才会退出。
 
-  设备指令是一次机器人 SDK 调用：`{"call": "lights.set_color", "args": ["#00FF00"], "kwargs": {"brightness": 0.8}}`，`call` 是 SDK 里的“模块.方法”。主 Agent 先执行设备指令，再播报文字；只执行开放给游戏的方法，并且只用游戏在 Agent Card 里声明过、用户同意过的能力，其余的跳过。开放的方法和对应的能力见[游戏开发指南的“设备指令”](docs/game-development.md#设备指令)，一局结束后主 Agent 把游戏用过的设备复位。
+## 发布
 
-- **运行时容错**：麦克风、识别服务、语音合成、模型调用出现单次故障时，会自动重试或跳过这一步，程序继续运行。只有启动阶段的问题（配置缺失、机器人未连接、端口被占用）会直接退出。
-- **对话页面**（`src/observability/`）：本机 `8790` 端口提供“对话”和“轨迹”两个视图，实时显示每一轮的识别结果、工具调用、A2A 消息和设备输出。
+```bash
+uv run publish            # 把源码发布到 Hugging Face，发布前会确认
+uv run publish --submit   # 发布后提交到应用广场审核
+```
+
+源码发到你名下的公开仓库 `WatcherRobot-<应用 ID>`，审核通过后应用才会出现在应用广场。发布前先改 `app.json` 里的 `version`；加上 `--provider gitee` 改发到 Gitee；`.env` 和 `.watcherignore` 里列出的文件不会发布。
 
 ## License
 

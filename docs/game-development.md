@@ -247,7 +247,7 @@ await self.robot.motion.move_to(pan_deg=60, tilt_deg=110, duration_ms=400)  # �
 
 ### 配置
 
-`settings.yaml` 列出游戏读取的全部配置项，`config.py` 把读到的值转换成配置对象。大模型的配置项和模板里的一样，用 `LLMSettings.from_values(values)` 读取。
+`settings.yaml` 列出游戏读取的全部配置项，每一项的写法见文件开头的注释；`config.py` 把读到的值转换成配置对象。大模型的配置项和模板里的一样，用 `LLMSettings.from_values(values)` 读取。
 
 - **内置游戏**：设置页面会为它自动加一栏，表单、默认值和必填检查都按 `settings.yaml` 来。必填项没填时应用会停在设置页面，所以能给默认值的尽量给。本地开发时配置从游戏目录的 `.env` 读取。
 - **远程游戏**：先读游戏目录的 `.env`（有的话），再用同名的环境变量覆盖。部署到服务器时把密钥放在环境变量里。
@@ -412,7 +412,14 @@ agentcade-game check https://你的游戏地址
 | `version` | `version` |
 | `author`、`homepage` | `provider.organization`、`provider.url` |
 
-消息格式见 [README 的“架构”一节](../README.md#架构)。设备指令是一次 SDK 调用，写成 `{"call": "lights.set_color", "args": ["#00FF00"], "kwargs": {"brightness": 0.8}}`，开放的方法和要声明的能力见上面的“设备指令”。写好后同样用 `agentcade-game check <地址>` 检查。
+消息放在 A2A 的 DataPart 里，每条都带 `"protocol": "agentcade/1"`：
+
+| 方向 | 内容 | A2A 载体 |
+| --- | --- | --- |
+| 主 → 游戏 | `{"kind": "start\|message\|end", "text": 用户原话, "reason": "user\|shutdown"}`，`reason` 只在 `end` 时有 | 流式 `SendMessage`，`context_id` 标识一局游戏 |
+| 游戏 → 主 | `{"text": 要播报的话, "directives": [设备指令], "session": "active\|ended"}` | 中间回复的状态是 `working`，可以只有设备指令；最后一条是 `completed`，必须有要播报的话 |
+
+设备指令是一次 SDK 调用，写成 `{"call": "lights.set_color", "args": ["#00FF00"], "kwargs": {"brightness": 0.8}}`，开放的方法和要声明的能力见上面的“设备指令”。写好后同样用 `agentcade-game check <地址>` 检查。
 
 ## 协议版本
 
