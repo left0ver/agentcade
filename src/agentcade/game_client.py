@@ -484,5 +484,7 @@ class GameHub:
             "playing": self.in_use(game_id), **details,
             "pending": [{"name": name, "label": registry.PERMISSIONS.get(name, name)}
                         for name in pending],
-            "permissions": [registry.PERMISSIONS.get(name, name) for name in details["granted"]],
+            # 游戏升级后不再要的能力，用户以前同意过也不列出来。
+            "permissions": [registry.PERMISSIONS.get(name, name) for name in details["granted"]
+                            if name in details["capabilities"]],
         }
